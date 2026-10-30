@@ -16,11 +16,13 @@ import secrets
 import shutil
 import threading
 import time
+import tempfile
 import zipfile
 from pathlib import Path
 
 from fastapi import FastAPI, File, Form, Header, HTTPException, UploadFile
 from fastapi.responses import FileResponse, RedirectResponse, Response, StreamingResponse
+from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.staticfiles import StaticFiles
 
 import almacen
@@ -34,6 +36,8 @@ TIPOS = {"chico", "chica"}
 
 DATOS.mkdir(parents=True, exist_ok=True)
 app = FastAPI(title="Probador de uniforme SENATI")
+# El estado de una sala con 300 fotos pesa unos 60 KB y se pide cada 2 s: comprimido baja a menos de 10 KB
+app.add_middleware(GZipMiddleware, minimum_size=1000)
 candado = threading.RLock()
 
 # salas[sala] = {"creada": t, "fotos": {id: foto}, "siguiente": n}
@@ -73,6 +77,7 @@ def sala_o_404(sala):
 def guardar(sala, nombre, contenido):
     (DATOS / sala).mkdir(parents=True, exist_ok=True)
     (DATOS / sala / nombre).write_bytes(contenido)
+    (DATOS / sala / f"{nombre}_mini").unlink(missing_ok=True)
     almacen.guardar_archivo(sala, nombre, contenido)
 
 
@@ -90,6 +95,7 @@ def leer(sala, nombre):
 
 def borrar(sala, nombre):
     (DATOS / sala / nombre).unlink(missing_ok=True)
+    (DATOS / sala / f"{nombre}_mini").unlink(missing_ok=True)
     almacen.borrar_archivo(sala, nombre)
 
 
@@ -229,12 +235,33 @@ async def subir_foto(sala: str, foto: UploadFile = File(...), tipo: str = Form(.
     return {"id": id_foto}
 
 
+def miniatura(sala, nombre):
+    # Las tarjetas usan una copia chica (unos 30 KB): con 100 o más fotos el celular no se pone lento
+    ruta = DATOS / sala / f"{nombre}_mini"
+    if ruta.exists():
+        return ruta.read_bytes()
+    contenido = leer(sala, nombre)
+    if not contenido:
+        return None
+    try:
+        from PIL import Image, ImageOps
+        imagen = ImageOps.exif_transpose(Image.open(io.BytesIO(contenido))).convert("RGB")
+        imagen.thumbnail((420, 560))
+        memoria = io.BytesIO()
+        imagen.save(memoria, "JPEG", quality=80, optimize=True)
+        chica = memoria.getvalue()
+    except Exception:
+        return contenido
+    ruta.write_bytes(chica)
+    return chica
+
+
 @app.get("/api/salas/{sala}/fotos/{id_foto}/{cual}")
-def ver_imagen(sala: str, id_foto: int, cual: str):
+def ver_imagen(sala: str, id_foto: int, cual: str, mini: int = 0):
     foto_o_404(sala, id_foto)
     if cual not in ("original", "resultado"):
         raise HTTPException(404)
-    contenido = leer(sala, f"{id_foto}_{cual}")
+    contenido = miniatura(sala, f"{id_foto}_{cual}") if mini else leer(sala, f"{id_foto}_{cual}")
     if not contenido:
         raise HTTPException(404, "Todavía no hay resultado.")
     return Response(contenido, media_type="image/jpeg", headers={"Cache-Control": "no-store"})
@@ -305,14 +332,22 @@ def borrar_sala(sala: str):
 @app.get("/api/salas/{sala}/zip")
 def descargar_zip(sala: str):
     datos = sala_o_404(sala)
-    memoria = io.BytesIO()
+    # El ZIP se arma en disco, no en memoria: con 200 fotos pesa decenas de MB y Render gratis tiene 512 MB
+    memoria = tempfile.TemporaryFile(dir=DATOS)
     with zipfile.ZipFile(memoria, "w", zipfile.ZIP_STORED) as z:
         for foto in sorted(datos["fotos"].values(), key=lambda f: (f.get("numero", f["id"]), f["id"])):
             contenido = leer(sala, f"{foto['id']}_resultado") if foto["estado"] == "lista" else None
             if contenido:
                 z.writestr(f"uniforme_{foto.get('numero', foto['id']):03d}_{foto['tipo']}.jpg", contenido)
     memoria.seek(0)
-    return StreamingResponse(memoria, media_type="application/zip",
+
+    def en_trozos():
+        # De a 1 MB: leer el archivo línea por línea lo hacía muy lento
+        with memoria:
+            while trozo := memoria.read(1024 * 1024):
+                yield trozo
+
+    return StreamingResponse(en_trozos(), media_type="application/zip",
                              headers={"Content-Disposition": 'attachment; filename="uniformes_senati.zip"'})
 
 

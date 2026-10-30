@@ -45,11 +45,11 @@ const iconoTacho = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" s
 function crearTarjeta(f) {
   const boton = document.createElement('div');
   boton.className = 'tarjeta';
-  boton.innerHTML = `<button class="abrir"><div class="img"><img alt="" loading="lazy"><span class="chip"></span>
+  boton.innerHTML = `<button class="abrir"><div class="img"><img alt="" loading="lazy" decoding="async"><span class="chip"></span>
       <div class="progreso" hidden><i></i></div></div>
     <div class="datos"><b>Foto ${f.numero}</b><span class="info"></span></div></button>
     <button class="tacho" aria-label="Borrar foto ${f.numero}" title="Borrar foto">${iconoTacho}</button>`;
-  boton.querySelector('img').src = `/api/salas/${sala}/fotos/${f.id}/original`;
+  boton.querySelector('img').src = `/api/salas/${sala}/fotos/${f.id}/original?mini=1`;
   boton.querySelector('.abrir').addEventListener('click', () => abrirDetalle(f.id));
   const tacho = boton.querySelector('.tacho');
   // Primer toque pide confirmar, el segundo borra: así no se borra por un roce
@@ -70,6 +70,10 @@ function crearTarjeta(f) {
 }
 
 function pintarTarjeta(t, f, datos) {
+  // Con 300 fotos se repinta cada 2 s: solo se toca la tarjeta si algo cambió
+  const firma = f.estado === 'haciendo' ? null : `${f.estado}|${f.tipo}|${f.fin}|${f.ia}|${f.origen}|${f.numero}|${geminiTrabajando === f.id}`;
+  if (firma && firma === t.firma) return;
+  t.firma = firma;
   const chip = t.boton.querySelector('.chip');
   chip.className = `chip ${f.estado === 'gemini' ? 'espera-gemini' : f.estado}`;
   chip.textContent = textoEstado(f);
@@ -82,7 +86,7 @@ function pintarTarjeta(t, f, datos) {
   // La imagen solo se recarga cuando cambia de estado, para que no parpadee
   if (t.estado !== f.estado || t.tipo !== f.tipo) {
     const cual = f.estado === 'lista' ? 'resultado' : 'original';
-    t.boton.querySelector('img').src = `/api/salas/${sala}/fotos/${f.id}/${cual}?v=${f.fin}`;
+    t.boton.querySelector('img').src = `/api/salas/${sala}/fotos/${f.id}/${cual}?mini=1&v=${f.fin}`;
     t.estado = f.estado;
     t.tipo = f.tipo;
   }
@@ -376,10 +380,21 @@ document.getElementById('borrar').addEventListener('click', async () => {
   await api(`/fotos/${id}`, { method: 'DELETE' }).catch(() => {});
 });
 // ---------- Gemini por Puter (se hace en este navegador) ----------
-const PEDIDO_GEMINI = 'Edit the first photo: dress the person in exactly the outfit shown in the second image '
-  + '(same blazer, white shirt, tie with its logo, trousers and black shoes, same colors and details). '
-  + 'Keep the face, hair, skin, body shape, pose, hands, background, lighting, camera angle and framing of the first photo exactly the same. '
-  + 'Photorealistic, natural fit and folds. Return only the edited photo.';
+// Gemini recibe 3 imágenes: 1) la persona, 2) el uniforme, 3) un ejemplo bueno de antes (izquierda) y después (derecha)
+const PRENDAS = {
+  chico: 'a white long-sleeve dress shirt with the small navy SENATI logo on the chest pocket, a navy blue tie with the SENATI logo, '
+    + 'a black leather belt, dark charcoal grey pleated trousers and black leather shoes. No blazer and no jacket',
+  chica: 'a royal blue two-button blazer, a white shirt, a black and white striped tie with the SENATI logo, '
+    + 'black straight trousers and black leather shoes',
+};
+const pedidoGemini = (tipo) => 'Image 1 is a photo of a real person. Image 2 is the SENATI school uniform. '
+  + 'Image 3 is an example of a correct result: the original photo on the left and the same photo with the uniform on the right. '
+  + `Edit image 1 the same way as the example: dress the person in exactly the uniform of image 2, that is ${PRENDAS[tipo]}. `
+  + 'Copy the colors, logo, tie and details of image 2 exactly; do not invent other clothes or accessories. '
+  + 'Remove every piece of the original clothing, including jackets, coats, scarves and the original shoes. '
+  + 'Keep the face, hair, skin tone, glasses, body shape, pose, hands, background, lighting, camera angle and framing of image 1 exactly the same. '
+  + 'It must be the same person: do not change the identity, facial features, expression, age, makeup or hairstyle, and do not move arms, legs, hands or head. '
+  + 'Same image size and aspect ratio as image 1. Photorealistic, natural fit and folds. Return only the edited photo, without the example.';
 const SEGUNDOS_GEMINI = 30;
 const estadoGemini = document.getElementById('gemini-estado');
 const entrarPuter = document.getElementById('entrar-puter');
@@ -465,11 +480,14 @@ async function hacerConGemini(id, tipo) {
   if (antes !== null && (antes <= 0 || (saldo.costoFoto && antes < saldo.costoFoto))) {
     throw new Error('insufficient funds: saldo gratis agotado (la página no lo intenta para no gastar)');
   }
-  const [persona, uniforme] = await Promise.all([
+  const genero = tipo === 'chico' ? 'hombre' : 'mujer';
+  const [persona, uniforme, ejemplo] = await Promise.all([
     comoBlob(`/api/salas/${sala}/fotos/${id}/original`),
-    comoBlob(`/estatico/uniforme_${tipo === 'chico' ? 'hombre' : 'mujer'}.webp`),
+    comoBlob(`/estatico/uniforme_${genero}.webp`),
+    comoBlob(`/estatico/ejemplo_${genero}.webp`),
   ]);
-  const imagen = await puter.ai.txt2img(PEDIDO_GEMINI, { model: 'gemini-3.1-flash-image', input_images: [persona, uniforme] });
+  const imagen = await puter.ai.txt2img(pedidoGemini(tipo === 'chico' ? 'chico' : 'chica'),
+    { model: 'gemini-3.1-flash-image', input_images: [persona, uniforme, ejemplo] });
   const datos = new FormData();
   datos.append('imagen', await comoBlob(imagen.src), 'gemini.png');
   await api(`/fotos/${id}/resultado-gemini`, { method: 'POST', body: datos });

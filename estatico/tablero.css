@@ -21,6 +21,8 @@ a.boton { text-decoration: none; }
 .rejilla {
   overflow: auto; padding: 1.2rem 1.4rem; display: grid;
   grid-template-columns: repeat(auto-fill, minmax(clamp(160px, 13vw, 260px), 1fr)); gap: 1rem; align-content: start;
+  /* Sin esto, con muchas fotos las filas se encogían para caber y las tarjetas quedaban aplastadas */
+  grid-auto-rows: max-content;
 }
 .lado .qr { width: min(100%, 220px); height: auto; aspect-ratio: 1; }
 
@@ -39,6 +41,8 @@ a.boton { text-decoration: none; }
 .tarjeta {
   background: #fff; border: 1.5px solid var(--borde); border-radius: var(--radio); overflow: hidden;
   position: relative;
+  /* Las tarjetas fuera de la pantalla no se dibujan: con 300 fotos el desplazamiento sigue fluido */
+  content-visibility: auto; contain-intrinsic-size: auto 320px;
 }
 .tarjeta:hover { border-color: var(--marino); }
 .tarjeta .abrir { display: grid; width: 100%; text-align: left; padding: 0; border: 0; background: none; color: inherit; }
