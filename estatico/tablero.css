@@ -65,6 +65,9 @@ a.boton { text-decoration: none; }
 .lado { border-left: 1px solid var(--borde); background: #fff; padding: 1.2rem; display: grid; align-content: start; gap: 1rem; }
 .lado .qr-caja { border: 0; padding: 0; }
 .saldo { font-size: .8rem; font-weight: 600; padding: .35rem .75rem; border-radius: 99px; background: var(--ok-claro); color: var(--ok); white-space: nowrap; }
+button.saldo { border: 0; cursor: pointer; min-height: 36px; }
+button.saldo:hover { filter: brightness(.96); }
+.saldo.cambiar { background: var(--marino); color: #fff; }
 .saldo.poco { background: var(--dorado-claro); color: var(--dorado); }
 .saldo.sin { background: #FEE2E2; color: #B91C1C; }
 .nube { font-size: .82rem; font-weight: 600; padding: .45rem .7rem; border-radius: 10px; background: var(--ok-claro); color: var(--ok); }

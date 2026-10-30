@@ -329,8 +329,11 @@ async function leerSaldo() {
   pintarSaldo();
 }
 
+let saldoPreguntando = false;
+
 function pintarSaldo() {
   const caja = document.getElementById('saldo-gemini');
+  if (saldoPreguntando) return;
   caja.hidden = !conSesion() || saldo.restante === null;
   if (caja.hidden) return;
   const porcentaje = saldo.total ? Math.max(0, Math.round((saldo.restante / saldo.total) * 100)) : 0;
@@ -339,8 +342,29 @@ function pintarSaldo() {
   caja.className = `saldo ${sinSaldoYa ? 'sin' : (porcentaje <= 30 || (alcanza !== null && alcanza <= 2)) ? 'poco' : ''}`;
   caja.textContent = sinSaldoYa ? 'Gemini sin saldo en esta cuenta'
     : `Saldo Gemini ${porcentaje}%${alcanza !== null ? ` · alcanza para ~${alcanza} foto${alcanza === 1 ? '' : 's'}` : ''}`;
-  caja.title = 'Saldo gratis del mes de esta cuenta de Puter. No cobra: cuando se acaba, la página se detiene y pide otra cuenta.';
+  caja.title = 'Saldo gratis del mes de esta cuenta de Puter. No cobra: cuando se acaba, la página se detiene y pide otra cuenta. Toca para cambiar de cuenta.';
 }
+
+// Tocar el saldo: el primer toque pregunta, el segundo cierra la sesión y abre Puter para entrar con otra cuenta
+document.getElementById('saldo-gemini').addEventListener('click', async () => {
+  const caja = document.getElementById('saldo-gemini');
+  if (!saldoPreguntando) {
+    saldoPreguntando = true;
+    caja.className = 'saldo cambiar';
+    caja.textContent = 'Cerrar esta cuenta y entrar con otra · toca otra vez';
+    setTimeout(() => { saldoPreguntando = false; pintarSaldo(); }, 4000);
+    return;
+  }
+  saldoPreguntando = false;
+  try {
+    if (conSesion()) await puter.auth.signOut();
+    saldo.restante = null;
+    pintarSaldo();
+    await iniciarSesion();
+  } catch (error) {
+    document.getElementById('falta').textContent = textoErrorPuter(error);
+  }
+});
 
 // Pone el uniforme con Gemini y guarda el resultado en la sala. Lanza el error de Puter si falla.
 async function hacerConGemini(id, tipo) {
