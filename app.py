@@ -5,9 +5,11 @@ Hace de punto de encuentro entre tres partes:
 - los celulares, que entran por QR y suben fotos;
 - el motor (cuaderno de Colab/Kaggle con la GPU), que pide trabajo, pone el uniforme y devuelve el resultado.
 
-Las fotos se guardan solo en el disco temporal del servidor y se borran solas a las 6 horas.
+Las fotos se guardan en el disco del servidor y, si hay claves de Cloudinary, también en la nube
+(almacen.py), para que vuelvan cuando Render se reinicia. Todo se borra solo a las 6 horas.
 """
 import io
+import json
 import re
 import os
 import secrets
@@ -20,6 +22,8 @@ from pathlib import Path
 from fastapi import FastAPI, File, Form, Header, HTTPException, UploadFile
 from fastapi.responses import FileResponse, RedirectResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
+
+import almacen
 
 RAIZ = Path(__file__).parent
 DATOS = Path(os.environ.get("CARPETA_DATOS", "/tmp/probador"))
@@ -64,6 +68,56 @@ def sala_o_404(sala):
     return salas[sala]
 
 
+# ---------- Archivos: disco del servidor + copia en la nube ----------
+
+def guardar(sala, nombre, contenido):
+    (DATOS / sala).mkdir(parents=True, exist_ok=True)
+    (DATOS / sala / nombre).write_bytes(contenido)
+    almacen.guardar_archivo(sala, nombre, contenido)
+
+
+def leer(sala, nombre):
+    ruta = DATOS / sala / nombre
+    if ruta.exists():
+        return ruta.read_bytes()
+    # Render se reinició y el disco quedó vacío: se trae de la nube y queda en disco otra vez
+    contenido = almacen.bajar_archivo(sala, nombre)
+    if contenido:
+        (DATOS / sala).mkdir(parents=True, exist_ok=True)
+        ruta.write_bytes(contenido)
+    return contenido
+
+
+def borrar(sala, nombre):
+    (DATOS / sala / nombre).unlink(missing_ok=True)
+    almacen.borrar_archivo(sala, nombre)
+
+
+def armar_estado(sala):
+    datos = salas.get(sala)
+    if datos is None:
+        return None
+    with candado:
+        fotos = {str(i): {k: v for k, v in f.items() if k not in ("paso", "motor")} for i, f in datos["fotos"].items()}
+        return json.dumps({"creada": datos["creada"], "siguiente": datos["siguiente"], "fotos": fotos})
+
+
+def recuperar_salas():
+    limite = ahora() - HORAS_GUARDADO * 3600
+    for sala, guardada in almacen.salas_guardadas().items():
+        if guardada["creada"] < limite:
+            almacen.borrar_sala(sala)
+            continue
+        fotos = {}
+        for clave, foto in guardada["fotos"].items():
+            foto.setdefault("paso", 0)
+            # Lo que se estaba haciendo cuando Render se apagó vuelve a la fila
+            if foto["estado"] == "haciendo":
+                foto.update(estado=estado_de_espera(foto.get("ia")), paso=0, inicio=0)
+            fotos[int(clave)] = foto
+        salas[sala] = {"creada": guardada["creada"], "siguiente": guardada["siguiente"], "fotos": fotos}
+
+
 def foto_o_404(sala, id_foto):
     datos = sala_o_404(sala)
     foto = datos["fotos"].get(id_foto)
@@ -87,6 +141,7 @@ def limpiar_viejas():
         for sala in [s for s, d in salas.items() if d["creada"] < limite]:
             shutil.rmtree(DATOS / sala, ignore_errors=True)
             del salas[sala]
+            almacen.borrar_sala(sala)
 
 
 # ---------- Páginas ----------
@@ -98,6 +153,7 @@ def inicio():
     with candado:
         salas[sala] = {"creada": ahora(), "fotos": {}, "siguiente": 1}
     (DATOS / sala).mkdir(parents=True, exist_ok=True)
+    almacen.guardar_estado(sala)
     return RedirectResponse(f"/tablero?sala={sala}")
 
 
@@ -130,6 +186,8 @@ def estado_sala(sala: str):
         "segundos_por_foto": round(motor["segundos_por_foto"]),
         "en_fila": len(en_fila),
         "ahora": ahora(),
+        "nube": {"activa": almacen.activo, "pendientes": almacen.estado["pendientes"],
+                 "fallando": almacen.estado["fallando"]},
     }
 
 
@@ -149,13 +207,14 @@ async def subir_foto(sala: str, foto: UploadFile = File(...), tipo: str = Form(.
     with candado:
         id_foto = datos["siguiente"]
         datos["siguiente"] += 1
-        (DATOS / sala / f"{id_foto}_original").write_bytes(contenido)
+        guardar(sala, f"{id_foto}_original", contenido)
         datos["fotos"][id_foto] = {
             "id": id_foto, "tipo": tipo, "origen": "Celular" if origen == "Celular" else "PC",
             "estado": estado_de_espera(ia), "ia": "gemini" if ia == "gemini" else "colab",
             "paso": 0, "pasos": 0, "error": "",
             "creada": ahora(), "inicio": 0, "fin": 0,
         }
+    almacen.guardar_estado(sala)
     return {"id": id_foto}
 
 
@@ -164,10 +223,10 @@ def ver_imagen(sala: str, id_foto: int, cual: str):
     foto_o_404(sala, id_foto)
     if cual not in ("original", "resultado"):
         raise HTTPException(404)
-    ruta = DATOS / sala / f"{id_foto}_{cual}"
-    if not ruta.exists():
+    contenido = leer(sala, f"{id_foto}_{cual}")
+    if not contenido:
         raise HTTPException(404, "Todavía no hay resultado.")
-    return Response(ruta.read_bytes(), media_type="image/jpeg", headers={"Cache-Control": "no-store"})
+    return Response(contenido, media_type="image/jpeg", headers={"Cache-Control": "no-store"})
 
 
 @app.post("/api/salas/{sala}/fotos/{id_foto}/repetir")
@@ -181,7 +240,8 @@ def repetir(sala: str, id_foto: int, tipo: str = Form(...), ia: str = Form("")):
         if ia in ("colab", "gemini"):
             foto["ia"] = ia
         foto.update(tipo=tipo, estado=estado_de_espera(foto.get("ia")), paso=0, pasos=0, error="", inicio=0, fin=0)
-        (DATOS / sala / f"{id_foto}_resultado").unlink(missing_ok=True)
+        borrar(sala, f"{id_foto}_resultado")
+    almacen.guardar_estado(sala)
     return {"ok": True}
 
 
@@ -192,6 +252,7 @@ async def resultado_gemini(sala: str, id_foto: int, imagen: UploadFile = File(No
     if error:
         with candado:
             foto.update(estado="error", error=error[:200], fin=ahora())
+        almacen.guardar_estado(sala)
         return {"ok": True}
     if imagen is None:
         raise HTTPException(400, "Falta la imagen.")
@@ -203,8 +264,9 @@ async def resultado_gemini(sala: str, id_foto: int, imagen: UploadFile = File(No
     with candado:
         if foto["estado"] == "haciendo":
             raise HTTPException(409, "Esta foto se está procesando ahora.")
-        (DATOS / sala / f"{id_foto}_resultado").write_bytes(contenido)
+        guardar(sala, f"{id_foto}_resultado", contenido)
         foto.update(estado="lista", error="", fin=ahora())
+    almacen.guardar_estado(sala)
     return {"ok": True}
 
 
@@ -214,7 +276,8 @@ def borrar_foto(sala: str, id_foto: int):
     with candado:
         datos["fotos"].pop(id_foto, None)
         for cual in ("original", "resultado"):
-            (DATOS / sala / f"{id_foto}_{cual}").unlink(missing_ok=True)
+            borrar(sala, f"{id_foto}_{cual}")
+    almacen.guardar_estado(sala)
     return {"ok": True}
 
 
@@ -224,6 +287,7 @@ def borrar_sala(sala: str):
     with candado:
         shutil.rmtree(DATOS / sala, ignore_errors=True)
         del salas[sala]
+    almacen.borrar_sala(sala)
     return {"ok": True}
 
 
@@ -233,9 +297,9 @@ def descargar_zip(sala: str):
     memoria = io.BytesIO()
     with zipfile.ZipFile(memoria, "w", zipfile.ZIP_STORED) as z:
         for foto in sorted(datos["fotos"].values(), key=lambda f: f["id"]):
-            ruta = DATOS / sala / f"{foto['id']}_resultado"
-            if ruta.exists():
-                z.write(ruta, f"uniforme_{foto['id']:03d}_{foto['tipo']}.jpg")
+            contenido = leer(sala, f"{foto['id']}_resultado") if foto["estado"] == "lista" else None
+            if contenido:
+                z.writestr(f"uniforme_{foto['id']:03d}_{foto['tipo']}.jpg", contenido)
     memoria.seek(0)
     return StreamingResponse(memoria, media_type="application/zip",
                              headers={"Content-Disposition": 'attachment; filename="uniformes_senati.zip"'})
@@ -253,7 +317,11 @@ def pedir_trabajo(x_clave: str = Header(""), nombre: str = Form("motor")):
             return Response(status_code=204)
         _, sala, foto = min(pendientes, key=lambda x: x[0])
         foto.update(estado="haciendo", inicio=ahora(), paso=0, motor=nombre)
-    imagen = (DATOS / sala / f"{foto['id']}_original").read_bytes()
+    imagen = leer(sala, f"{foto['id']}_original")
+    if not imagen:
+        with candado:
+            foto.update(estado="error", error="No se encontró la foto original.", fin=ahora())
+        return Response(status_code=204)
     return Response(imagen, media_type="application/octet-stream",
                     headers={"X-Sala": sala, "X-Foto": str(foto["id"]), "X-Tipo": foto["tipo"]})
 
@@ -275,18 +343,26 @@ async def resultado(sala: str, id_foto: int, imagen: UploadFile = File(None), er
     marcar_motor(foto.get("motor"))
     if error:
         foto.update(estado="error", error=error[:200], fin=ahora())
+        almacen.guardar_estado(sala)
         return {"ok": True}
-    (DATOS / sala / f"{id_foto}_resultado").write_bytes(await imagen.read())
+    guardar(sala, f"{id_foto}_resultado", await imagen.read())
     duracion = ahora() - foto["inicio"]
     # Promedio móvil para calcular cuánto falta en la fila
     motor["segundos_por_foto"] = motor["segundos_por_foto"] * 0.7 + duracion * 0.3
     foto.update(estado="lista", fin=ahora(), paso=foto["pasos"])
+    almacen.guardar_estado(sala)
     return {"ok": True}
 
 
 @app.get("/api/salud")
 def salud():
     return {"ok": True, "motor_conectado": ahora() - motor["visto"] < 20}
+
+
+@app.on_event("startup")
+def al_arrancar():
+    recuperar_salas()
+    almacen.arrancar(armar_estado)
 
 
 app.mount("/estatico", StaticFiles(directory=RAIZ / "estatico"), name="estatico")

@@ -109,6 +109,7 @@ function pintar(datos) {
     : '';
 
   pintarIa(datos);
+  pintarNube(datos.nube);
   const motor = document.getElementById('motor');
   motor.className = `motor ${datos.motor_conectado ? 'encendido' : 'apagado'}`;
   motor.textContent = !datos.motor_conectado ? 'Motor apagado'
@@ -315,8 +316,39 @@ async function comoBlob(url) {
   return r.blob();
 }
 
+// Saldo gratis del mes de la cuenta de Puter (en microcentavos: 1 dólar = 100 000 000).
+// Puter no cobra: cuando el saldo se acaba, deja de responder. Igual la página para antes de intentarlo.
+const saldo = { restante: null, total: null, costoFoto: Number(localStorage.getItem('costoFotoGemini')) || null };
+
+async function leerSaldo() {
+  if (!conSesion() || !puter.auth.getMonthlyUsage) return;
+  try {
+    const info = (await puter.auth.getMonthlyUsage())?.allowanceInfo;
+    if (info) { saldo.restante = info.remaining; saldo.total = info.monthUsageAllowance; }
+  } catch (e) { /* si no responde, se deja el último valor */ }
+  pintarSaldo();
+}
+
+function pintarSaldo() {
+  const caja = document.getElementById('saldo-gemini');
+  caja.hidden = !conSesion() || saldo.restante === null;
+  if (caja.hidden) return;
+  const porcentaje = saldo.total ? Math.max(0, Math.round((saldo.restante / saldo.total) * 100)) : 0;
+  const alcanza = saldo.costoFoto ? Math.max(0, Math.floor(saldo.restante / saldo.costoFoto)) : null;
+  const sinSaldoYa = porcentaje <= 0 || alcanza === 0;
+  caja.className = `saldo ${sinSaldoYa ? 'sin' : (porcentaje <= 30 || (alcanza !== null && alcanza <= 2)) ? 'poco' : ''}`;
+  caja.textContent = sinSaldoYa ? 'Gemini sin saldo en esta cuenta'
+    : `Saldo Gemini ${porcentaje}%${alcanza !== null ? ` · alcanza para ~${alcanza} foto${alcanza === 1 ? '' : 's'}` : ''}`;
+  caja.title = 'Saldo gratis del mes de esta cuenta de Puter. No cobra: cuando se acaba, la página se detiene y pide otra cuenta.';
+}
+
 // Pone el uniforme con Gemini y guarda el resultado en la sala. Lanza el error de Puter si falla.
 async function hacerConGemini(id, tipo) {
+  await leerSaldo();
+  const antes = saldo.restante;
+  if (antes !== null && (antes <= 0 || (saldo.costoFoto && antes < saldo.costoFoto))) {
+    throw new Error('insufficient funds: saldo gratis agotado (la página no lo intenta para no gastar)');
+  }
   const [persona, uniforme] = await Promise.all([
     comoBlob(`/api/salas/${sala}/fotos/${id}/original`),
     comoBlob(`/estatico/uniforme_${tipo === 'chico' ? 'hombre' : 'mujer'}.webp`),
@@ -325,12 +357,22 @@ async function hacerConGemini(id, tipo) {
   const datos = new FormData();
   datos.append('imagen', await comoBlob(imagen.src), 'gemini.png');
   await api(`/fotos/${id}/resultado-gemini`, { method: 'POST', body: datos });
+  await leerSaldo();
+  // Lo que costó esta foto sirve para avisar cuántas más alcanzan
+  if (antes !== null && saldo.restante !== null && antes > saldo.restante) {
+    const costo = antes - saldo.restante;
+    saldo.costoFoto = saldo.costoFoto ? saldo.costoFoto * 0.5 + costo * 0.5 : costo;
+    localStorage.setItem('costoFotoGemini', String(Math.round(saldo.costoFoto)));
+    pintarSaldo();
+  }
 }
 
 // Cuando se acaba el saldo: cierra la sesión y pide entrar con otra cuenta (el navegador exige un toque)
 async function cuentaGastada() {
   try { await puter.auth.signOut(); } catch (e) { /* ya estaba cerrada */ }
   geminiSinCuenta = true;
+  saldo.restante = null;
+  pintarSaldo();
   entrarPuter.textContent = 'Entrar con otra cuenta de Puter';
 }
 
@@ -339,6 +381,7 @@ async function iniciarSesion() {
   if (!conSesion()) await puter.auth.signIn();
   geminiSinCuenta = false;
   entrarPuter.textContent = 'Entrar a Puter';
+  leerSaldo();
 }
 
 // Modo Gemini: el tablero hace las fotos en espera una por una mientras haya sesión abierta
@@ -360,6 +403,23 @@ async function cicloGemini(datos) {
     }
   } finally {
     geminiTrabajando = null;
+  }
+}
+
+// Copia en la nube (Cloudinary): si falla el internet, el servidor sigue y reintenta solo
+function pintarNube(nube) {
+  const caja = document.getElementById('nube');
+  caja.hidden = !nube?.activa;
+  if (caja.hidden) return;
+  if (nube.fallando) {
+    caja.className = 'nube fallando';
+    caja.textContent = `Sin conexión con la nube: reintentando solo (${nube.pendientes} por guardar). Las fotos siguen aquí.`;
+  } else if (nube.pendientes > 0) {
+    caja.className = 'nube guardando';
+    caja.textContent = `Guardando en la nube… (${nube.pendientes})`;
+  } else {
+    caja.className = 'nube';
+    caja.textContent = 'Fotos guardadas en la nube';
   }
 }
 
@@ -402,3 +462,4 @@ document.getElementById('borrar-todo').addEventListener('click', async () => {
 });
 
 actualizar();
+window.addEventListener('load', () => leerSaldo());
