@@ -36,6 +36,10 @@
     <button data-tipo="chico" aria-pressed="false">Chico</button>
     <button data-tipo="chica" aria-pressed="false">Chica</button>
   </div>
+  <div class="segmento" role="group" aria-label="IA que pone el uniforme">
+    <button data-ia="colab" aria-pressed="false">IA Colab</button>
+    <button data-ia="gemini" aria-pressed="false">IA Gemini</button>
+  </div>
   <label class="casilla"><input type="checkbox" id="mayor"> La persona es mayor de 18 años y aceptó la foto (OBLIGATORIO)</label>
   <div class="botones">
     <label class="boton">Tomar foto<input type="file" accept="image/*" capture="environment" hidden id="camara"></label>
@@ -50,15 +54,20 @@
   const enviar = document.getElementById('enviar');
   const aviso = document.getElementById('aviso');
   const mayor = document.getElementById('mayor');
-  let archivo = null, tipo = null;
+  let archivo = null, tipo = null, ia = null;
 
   function avisar(texto, clase = '') { aviso.textContent = texto; aviso.className = `aviso ${clase}`; }
-  function revisar() { enviar.disabled = !(archivo && tipo && mayor.checked); }
+  function revisar() { enviar.disabled = !(archivo && tipo && ia && mayor.checked); }
   if (!sala) avisar('Escanea otra vez el QR del tablero.', 'mal');
 
   document.querySelectorAll('[data-tipo]').forEach(b => b.addEventListener('click', () => {
     tipo = b.dataset.tipo;
     document.querySelectorAll('[data-tipo]').forEach(x => x.setAttribute('aria-pressed', x === b));
+    revisar();
+  }));
+  document.querySelectorAll('[data-ia]').forEach(b => b.addEventListener('click', () => {
+    ia = b.dataset.ia;
+    document.querySelectorAll('[data-ia]').forEach(x => x.setAttribute('aria-pressed', x === b));
     revisar();
   }));
   mayor.addEventListener('change', revisar);
@@ -68,7 +77,7 @@
     archivo = e.target.files[0];
     e.target.value = '';
     visor.innerHTML = `<img src="${URL.createObjectURL(archivo)}" alt="Foto tomada">`;
-    avisar(tipo ? '' : 'Elige Chico o Chica.');
+    avisar(!tipo ? 'Elige Chico o Chica.' : !ia ? 'Elige la IA: Colab o Gemini.' : '');
     revisar();
   }));
 
@@ -76,7 +85,7 @@
     enviar.disabled = true;
     avisar('Mandando…');
     try {
-      await subirFoto(archivo, tipo, 'Celular');
+      await subirFoto(archivo, tipo, 'Celular', ia);
       avisar('Llegó a la PC. Puedes tomar la siguiente.', 'ok');
       archivo = null;
       mayor.checked = false;

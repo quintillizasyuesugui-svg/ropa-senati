@@ -17,10 +17,6 @@
       <div class="progreso"><i id="barra-total"></i></div>
       <span class="falta" id="falta"></span>
     </div>
-    <div class="segmento ia" role="group" aria-label="IA que pone el uniforme">
-      <button data-ia="colab" aria-pressed="true">Colab</button>
-      <button data-ia="gemini" aria-pressed="false">Gemini</button>
-    </div>
     <span class="motor apagado" id="motor" role="status">Motor apagado</span>
     <button class="boton dorado" id="entrar-puter" hidden>Entrar a Puter</button>
     <button class="boton" id="subir"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>Subir fotos</button>
@@ -52,6 +48,13 @@
         <div class="segmento" role="group">
           <button type="button" data-tipo-subida="chico" aria-pressed="false">Chico</button>
           <button type="button" data-tipo-subida="chica" aria-pressed="true">Chica</button>
+        </div>
+      </fieldset>
+      <fieldset>
+        <legend>IA que pone el uniforme (OBLIGATORIO)</legend>
+        <div class="segmento" role="group">
+          <button type="button" data-ia-subida="colab" aria-pressed="false">Colab</button>
+          <button type="button" data-ia-subida="gemini" aria-pressed="false">Gemini</button>
         </div>
       </fieldset>
       <label class="casilla"><input type="checkbox" id="mayor-pc"> Confirmo que todas son personas mayores de 18 años (OBLIGATORIO)</label>

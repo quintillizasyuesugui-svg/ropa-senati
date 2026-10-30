@@ -5,6 +5,7 @@ const tarjetas = new Map();
 let ultimo = null;
 let abierta = null;
 let tipoSubida = 'chica';
+let iaSubida = null;
 let tipoRepetir = 'chica';
 
 if (!sala) location.href = '/';
@@ -77,7 +78,7 @@ function pintarTarjeta(t, f, datos) {
   barra.firstElementChild.style.width = f.pasos ? `${(f.paso / f.pasos) * 100}%` : '3%';
   t.boton.querySelector('.info').textContent = f.estado === 'haciendo'
     ? `falta ${textoTiempo(faltaFoto(f, datos))}`
-    : `${f.tipo} · ${f.origen}`;
+    : `${f.tipo} · ${f.origen}${f.ia === 'gemini' ? ' · Gemini' : ''}`;
   // La imagen solo se recarga cuando cambia de estado, para que no parpadee
   if (t.estado !== f.estado || t.tipo !== f.tipo) {
     const cual = f.estado === 'lista' ? 'resultado' : 'original';
@@ -109,7 +110,6 @@ function pintar(datos) {
 
   pintarIa(datos);
   const motor = document.getElementById('motor');
-  motor.hidden = datos.ia === 'gemini';
   motor.className = `motor ${datos.motor_conectado ? 'encendido' : 'apagado'}`;
   motor.textContent = !datos.motor_conectado ? 'Motor apagado'
     : datos.motores > 1 ? `${datos.motores} motores conectados` : 'Motor conectado';
@@ -136,7 +136,15 @@ document.querySelectorAll('[data-tipo-subida]').forEach(b => b.addEventListener(
   tipoSubida = b.dataset.tipoSubida;
   document.querySelectorAll('[data-tipo-subida]').forEach(x => x.setAttribute('aria-pressed', x === b));
 }));
+document.querySelectorAll('[data-ia-subida]').forEach(b => b.addEventListener('click', () => {
+  iaSubida = b.dataset.iaSubida;
+  document.querySelectorAll('[data-ia-subida]').forEach(x => x.setAttribute('aria-pressed', x === b));
+}));
 document.getElementById('elegir-archivos').addEventListener('click', () => {
+  if (!iaSubida) {
+    errorSubida.textContent = 'Elige la IA: Colab o Gemini.';
+    return;
+  }
   if (!document.getElementById('mayor-pc').checked) {
     errorSubida.textContent = 'Marca la casilla: solo se procesan fotos de mayores de 18 años.';
     return;
@@ -149,7 +157,7 @@ archivo.addEventListener('change', async () => {
   let fallidas = 0;
   for (const a of lista) {
     errorSubida.textContent = `Subiendo ${lista.indexOf(a) + 1} de ${lista.length}…`;
-    try { await subirFoto(a, tipoSubida, 'PC'); } catch (e) { fallidas += 1; }
+    try { await subirFoto(a, tipoSubida, 'PC', iaSubida); } catch (e) { fallidas += 1; }
   }
   if (fallidas) errorSubida.textContent = `${fallidas} foto(s) no se pudieron subir. Revisa que sean JPG o PNG.`;
   else dialogoSubida.close();
@@ -290,7 +298,7 @@ async function iniciarSesion() {
 
 // Modo Gemini: el tablero hace las fotos en espera una por una mientras haya sesión abierta
 async function cicloGemini(datos) {
-  if (geminiTrabajando !== null || datos.ia !== 'gemini' || !conSesion()) return;
+  if (geminiTrabajando !== null || !conSesion()) return;
   const f = datos.fotos.filter(x => x.estado === 'gemini').sort((a, b) => a.creada - b.creada)[0];
   if (!f) return;
   geminiTrabajando = f.id;
@@ -311,26 +319,15 @@ async function cicloGemini(datos) {
 }
 
 function pintarIa(datos) {
-  document.querySelectorAll('[data-ia]').forEach(b => b.setAttribute('aria-pressed', b.dataset.ia === datos.ia));
-  entrarPuter.hidden = datos.ia !== 'gemini' || conSesion();
-  if (datos.ia === 'gemini' && !conSesion() && datos.fotos.some(f => f.estado === 'gemini')) {
+  const esperanGemini = datos.fotos.some(f => f.estado === 'gemini');
+  entrarPuter.hidden = !esperanGemini || conSesion();
+  if (esperanGemini && !conSesion()) {
     document.getElementById('falta').textContent = geminiSinCuenta
       ? 'Se acabó el saldo de esa cuenta: toca «Entrar con otra cuenta de Puter».'
       : 'Toca «Entrar a Puter» para que Gemini empiece.';
   }
   cicloGemini(datos);
 }
-
-document.querySelectorAll('[data-ia]').forEach(b => b.addEventListener('click', async () => {
-  const datos = new FormData();
-  datos.append('ia', b.dataset.ia);
-  try {
-    await api('/ia', { method: 'POST', body: datos });
-    if (b.dataset.ia === 'gemini' && !conSesion()) await iniciarSesion();
-  } catch (error) {
-    document.getElementById('falta').textContent = textoErrorPuter(error);
-  }
-}));
 
 entrarPuter.addEventListener('click', async () => {
   try { await iniciarSesion(); } catch (error) { document.getElementById('falta').textContent = textoErrorPuter(error); }

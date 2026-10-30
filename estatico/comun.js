@@ -29,12 +29,13 @@ function reducirFoto(archivo, lado = 1280) {
   });
 }
 
-async function subirFoto(archivo, tipo, origen) {
+async function subirFoto(archivo, tipo, origen, ia = 'colab') {
   const datos = new FormData();
   datos.append('foto', await reducirFoto(archivo), 'foto.jpg');
   datos.append('tipo', tipo);
   datos.append('origen', origen);
   datos.append('mayor', 'si');
+  datos.append('ia', ia);
   return api('/fotos', { method: 'POST', body: datos });
 }
 

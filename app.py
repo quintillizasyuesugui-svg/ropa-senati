@@ -59,7 +59,7 @@ def sala_o_404(sala):
         if not re.fullmatch(r"[A-Za-z0-9_-]{12}", sala or ""):
             raise HTTPException(404, "Esta sala no existe. Abre el tablero de nuevo.")
         with candado:
-            salas.setdefault(sala, {"creada": ahora(), "fotos": {}, "siguiente": 1, "ia": "colab"})
+            salas.setdefault(sala, {"creada": ahora(), "fotos": {}, "siguiente": 1})
         (DATOS / sala).mkdir(parents=True, exist_ok=True)
     return salas[sala]
 
@@ -78,7 +78,7 @@ def revisar_clave(clave):
 
 
 def publica(foto):
-    return {k: foto[k] for k in ("id", "tipo", "origen", "estado", "paso", "pasos", "error", "creada", "inicio", "fin")}
+    return {k: foto.get(k) for k in ("id", "tipo", "origen", "ia", "estado", "paso", "pasos", "error", "creada", "inicio", "fin")}
 
 
 def limpiar_viejas():
@@ -96,7 +96,7 @@ def inicio():
     limpiar_viejas()
     sala = secrets.token_urlsafe(9)
     with candado:
-        salas[sala] = {"creada": ahora(), "fotos": {}, "siguiente": 1, "ia": "colab"}
+        salas[sala] = {"creada": ahora(), "fotos": {}, "siguiente": 1}
     (DATOS / sala).mkdir(parents=True, exist_ok=True)
     return RedirectResponse(f"/tablero?sala={sala}")
 
@@ -113,23 +113,9 @@ def celular():
 
 # ---------- API de la sala (tablero y celulares) ----------
 
-def estado_de_espera(datos):
+def estado_de_espera(ia):
     # «cola» la toma el motor de Colab; «gemini» la hace el navegador del tablero con Puter
-    return "gemini" if datos.get("ia") == "gemini" else "cola"
-
-
-@app.post("/api/salas/{sala}/ia")
-def elegir_ia(sala: str, ia: str = Form(...)):
-    datos = sala_o_404(sala)
-    if ia not in ("colab", "gemini"):
-        raise HTTPException(400, "Elige Colab o Gemini.")
-    with candado:
-        datos["ia"] = ia
-        # Las fotos que aún esperan pasan a la IA elegida
-        for foto in datos["fotos"].values():
-            if foto["estado"] in ("cola", "gemini"):
-                foto["estado"] = estado_de_espera(datos)
-    return {"ok": True}
+    return "gemini" if ia == "gemini" else "cola"
 
 
 @app.get("/api/salas/{sala}")
@@ -143,14 +129,13 @@ def estado_sala(sala: str):
         "motores": motores_activos(),
         "segundos_por_foto": round(motor["segundos_por_foto"]),
         "en_fila": len(en_fila),
-        "ia": datos.get("ia", "colab"),
         "ahora": ahora(),
     }
 
 
 @app.post("/api/salas/{sala}/fotos")
 async def subir_foto(sala: str, foto: UploadFile = File(...), tipo: str = Form(...),
-                     origen: str = Form("PC"), mayor: str = Form("")):
+                     origen: str = Form("PC"), mayor: str = Form(""), ia: str = Form("colab")):
     datos = sala_o_404(sala)
     if tipo not in TIPOS:
         raise HTTPException(400, "Elige chico o chica.")
@@ -167,7 +152,8 @@ async def subir_foto(sala: str, foto: UploadFile = File(...), tipo: str = Form(.
         (DATOS / sala / f"{id_foto}_original").write_bytes(contenido)
         datos["fotos"][id_foto] = {
             "id": id_foto, "tipo": tipo, "origen": "Celular" if origen == "Celular" else "PC",
-            "estado": estado_de_espera(datos), "paso": 0, "pasos": 0, "error": "",
+            "estado": estado_de_espera(ia), "ia": "gemini" if ia == "gemini" else "colab",
+            "paso": 0, "pasos": 0, "error": "",
             "creada": ahora(), "inicio": 0, "fin": 0,
         }
     return {"id": id_foto}
@@ -192,7 +178,7 @@ def repetir(sala: str, id_foto: int, tipo: str = Form(...)):
     with candado:
         if foto["estado"] == "haciendo":
             raise HTTPException(409, "Esta foto se está procesando ahora.")
-        foto.update(tipo=tipo, estado=estado_de_espera(sala_o_404(sala)), paso=0, pasos=0, error="", inicio=0, fin=0)
+        foto.update(tipo=tipo, estado=estado_de_espera(foto.get("ia")), paso=0, pasos=0, error="", inicio=0, fin=0)
         (DATOS / sala / f"{id_foto}_resultado").unlink(missing_ok=True)
     return {"ok": True}
 
