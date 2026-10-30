@@ -59,7 +59,7 @@ def sala_o_404(sala):
         if not re.fullmatch(r"[A-Za-z0-9_-]{12}", sala or ""):
             raise HTTPException(404, "Esta sala no existe. Abre el tablero de nuevo.")
         with candado:
-            salas.setdefault(sala, {"creada": ahora(), "fotos": {}, "siguiente": 1})
+            salas.setdefault(sala, {"creada": ahora(), "fotos": {}, "siguiente": 1, "ia": "colab"})
         (DATOS / sala).mkdir(parents=True, exist_ok=True)
     return salas[sala]
 
@@ -96,7 +96,7 @@ def inicio():
     limpiar_viejas()
     sala = secrets.token_urlsafe(9)
     with candado:
-        salas[sala] = {"creada": ahora(), "fotos": {}, "siguiente": 1}
+        salas[sala] = {"creada": ahora(), "fotos": {}, "siguiente": 1, "ia": "colab"}
     (DATOS / sala).mkdir(parents=True, exist_ok=True)
     return RedirectResponse(f"/tablero?sala={sala}")
 
@@ -113,17 +113,37 @@ def celular():
 
 # ---------- API de la sala (tablero y celulares) ----------
 
+def estado_de_espera(datos):
+    # «cola» la toma el motor de Colab; «gemini» la hace el navegador del tablero con Puter
+    return "gemini" if datos.get("ia") == "gemini" else "cola"
+
+
+@app.post("/api/salas/{sala}/ia")
+def elegir_ia(sala: str, ia: str = Form(...)):
+    datos = sala_o_404(sala)
+    if ia not in ("colab", "gemini"):
+        raise HTTPException(400, "Elige Colab o Gemini.")
+    with candado:
+        datos["ia"] = ia
+        # Las fotos que aún esperan pasan a la IA elegida
+        for foto in datos["fotos"].values():
+            if foto["estado"] in ("cola", "gemini"):
+                foto["estado"] = estado_de_espera(datos)
+    return {"ok": True}
+
+
 @app.get("/api/salas/{sala}")
 def estado_sala(sala: str):
     datos = sala_o_404(sala)
     fotos = sorted(datos["fotos"].values(), key=lambda f: f["id"])
-    en_fila = [f for f in fotos if f["estado"] in ("cola", "haciendo")]
+    en_fila = [f for f in fotos if f["estado"] in ("cola", "haciendo", "gemini")]
     return {
         "fotos": [publica(f) for f in fotos],
         "motor_conectado": ahora() - motor["visto"] < 20,
         "motores": motores_activos(),
         "segundos_por_foto": round(motor["segundos_por_foto"]),
         "en_fila": len(en_fila),
+        "ia": datos.get("ia", "colab"),
         "ahora": ahora(),
     }
 
@@ -147,7 +167,7 @@ async def subir_foto(sala: str, foto: UploadFile = File(...), tipo: str = Form(.
         (DATOS / sala / f"{id_foto}_original").write_bytes(contenido)
         datos["fotos"][id_foto] = {
             "id": id_foto, "tipo": tipo, "origen": "Celular" if origen == "Celular" else "PC",
-            "estado": "cola", "paso": 0, "pasos": 0, "error": "",
+            "estado": estado_de_espera(datos), "paso": 0, "pasos": 0, "error": "",
             "creada": ahora(), "inicio": 0, "fin": 0,
         }
     return {"id": id_foto}
@@ -172,15 +192,21 @@ def repetir(sala: str, id_foto: int, tipo: str = Form(...)):
     with candado:
         if foto["estado"] == "haciendo":
             raise HTTPException(409, "Esta foto se está procesando ahora.")
-        foto.update(tipo=tipo, estado="cola", paso=0, pasos=0, error="", inicio=0, fin=0)
+        foto.update(tipo=tipo, estado=estado_de_espera(sala_o_404(sala)), paso=0, pasos=0, error="", inicio=0, fin=0)
         (DATOS / sala / f"{id_foto}_resultado").unlink(missing_ok=True)
     return {"ok": True}
 
 
 @app.post("/api/salas/{sala}/fotos/{id_foto}/resultado-gemini")
-async def resultado_gemini(sala: str, id_foto: int, imagen: UploadFile = File(...)):
-    """Resultado hecho en el navegador con Gemini (Puter), respaldo para fotos que fallaron."""
+async def resultado_gemini(sala: str, id_foto: int, imagen: UploadFile = File(None), error: str = Form("")):
+    """Resultado hecho en el navegador con Gemini (Puter)."""
     foto = foto_o_404(sala, id_foto)
+    if error:
+        with candado:
+            foto.update(estado="error", error=error[:200], fin=ahora())
+        return {"ok": True}
+    if imagen is None:
+        raise HTTPException(400, "Falta la imagen.")
     contenido = await imagen.read()
     if len(contenido) > MAX_BYTES:
         raise HTTPException(413, "La imagen de Gemini pesa más de 8 MB.")

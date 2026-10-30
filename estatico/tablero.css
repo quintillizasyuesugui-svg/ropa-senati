@@ -32,7 +32,7 @@ a.boton { text-decoration: none; }
   .falta { font-size: .75rem; }
   .cabecera .boton { padding: 0 .8rem; white-space: nowrap; }
 }
-@media (min-width: 761px) and (max-width: 960px) {
+@media (min-width: 761px) and (max-width: 1240px) {
   .cabecera h1 { display: none; }
 }
 .rejilla .vacio { grid-column: 1 / -1; min-height: 50vh; }
@@ -95,6 +95,9 @@ legend { font-size: .9rem; font-weight: 600; margin-bottom: .4rem; }
 .modal .error-form { margin: .4rem 1.4rem 0; }
 .modal footer { display: flex; gap: .6rem; padding: .8rem 1.4rem 1.2rem; align-items: center; flex-wrap: wrap; }
 .espacio { flex: 1; }
+.cabecera .segmento.ia { flex: none; }
+.cabecera .segmento.ia button { padding: 0 .9rem; }
+.chip.espera-gemini { background: var(--dorado-claro); color: var(--dorado); }
 /* Respaldo con Gemini (Puter) dentro del detalle */
 .gemini { margin: .6rem 1.4rem 0; padding: .7rem .9rem; border: 1px solid #FCD9A8; background: #FFFBEB; border-radius: var(--radio);
   display: grid; grid-template-columns: 1fr auto; gap: .3rem .9rem; align-items: center; font-size: .85rem; color: var(--gris); }
@@ -116,7 +119,9 @@ legend { font-size: .9rem; font-weight: 600; margin-bottom: .4rem; }
   .cabecera h1 { width: 100%; font-size: 1.05rem; }
   .cuenta { min-width: 0; flex-basis: 100%; }
   .motor { flex-basis: 100%; justify-content: center; }
-  .cabecera .boton { flex: 1; }
+  .cabecera .boton { flex: 1 1 40%; white-space: nowrap; }
+  .cabecera .segmento.ia { flex: 1 1 40%; }
+  .cabecera .segmento.ia button { flex: 1; }
   .cuerpo { grid-template-columns: 1fr; }
   .lado { display: none; }
   .rejilla { grid-template-columns: repeat(2, 1fr); padding: .7rem; gap: .6rem; }
