@@ -41,8 +41,9 @@
   </div>
 
   <dialog id="subida">
-    <form method="dialog" class="dialogo">
+    <form method="dialog" class="dialogo ancho">
       <h2>Subir fotos desde la PC</h2>
+      <div class="dos-columnas">
       <fieldset>
         <legend>Uniforme (OBLIGATORIO)</legend>
         <div class="segmento" role="group">
@@ -57,11 +58,14 @@
           <button type="button" data-ia-subida="gemini" aria-pressed="false">Gemini</button>
         </div>
       </fieldset>
+      </div>
+      <button type="button" class="suelta" id="suelta">Suelta las fotos aquí<small>o toca para elegirlas</small></button>
+      <div class="miniaturas" id="miniaturas" hidden></div>
       <label class="casilla"><input type="checkbox" id="mayor-pc"> Confirmo que todas son personas mayores de 18 años (OBLIGATORIO)</label>
       <p class="error-form" id="error-subida" role="alert"></p>
       <div class="acciones">
         <button class="boton" value="cancelar">Cancelar</button>
-        <button class="boton principal" type="button" id="elegir-archivos">Elegir fotos</button>
+        <button class="boton principal" type="button" id="elegir-archivos" disabled>Subir fotos</button>
       </div>
     </form>
   </dialog>

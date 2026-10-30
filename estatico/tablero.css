@@ -68,10 +68,23 @@ a.boton { text-decoration: none; }
 .boton.peligro { color: #B91C1C; border-color: #FCA5A5; }
 .boton.peligro:hover { border-color: #B91C1C; }
 
-dialog { border: 0; border-radius: 18px; padding: 0; }
+dialog { border: 0; border-radius: 18px; padding: 0; margin: auto; }
 dialog::backdrop { background: rgba(15,23,42,.55); }
 .dialogo { padding: 1.4rem; display: grid; gap: 1rem; width: min(440px, 90vw); }
 .dialogo h2 { font-size: 1.2rem; }
+.dialogo.ancho { width: min(640px, 94vw); }
+.dos-columnas { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+/* Zona para soltar fotos y miniaturas antes de subir */
+.suelta { border: 2px dashed #93C5FD; background: #EFF6FF; border-radius: var(--radio); padding: 1.1rem; text-align: center;
+  color: var(--marino); font-weight: 600; display: grid; gap: .2rem; width: 100%; }
+.suelta small { color: var(--gris); font-weight: 400; font-size: .8rem; }
+.suelta.encima { background: #DBEAFE; border-color: var(--marino); }
+.miniaturas { display: grid; grid-template-columns: repeat(auto-fill, minmax(78px, 1fr)); gap: .5rem; max-height: 34vh; overflow: auto; }
+.miniaturas figure { position: relative; margin: 0; }
+.miniaturas img { width: 100%; aspect-ratio: 3/4; object-fit: cover; border-radius: 8px; border: 1px solid var(--borde); display: block; }
+.miniaturas .quitar { position: absolute; top: 4px; right: 4px; width: 28px; height: 28px; border-radius: 50%; border: 0;
+  background: rgba(15, 23, 42, .75); color: #fff; font-size: 1rem; line-height: 1; }
+@media (max-width: 560px) { .dos-columnas { grid-template-columns: 1fr; } }
 fieldset { border: 0; padding: 0; display: grid; gap: .4rem; }
 legend { font-size: .9rem; font-weight: 600; margin-bottom: .4rem; }
 .casilla { display: flex; gap: .6rem; align-items: flex-start; font-size: .92rem; }

@@ -131,7 +131,48 @@ async function actualizar() {
 const dialogoSubida = document.getElementById('subida');
 const archivo = document.getElementById('archivo');
 const errorSubida = document.getElementById('error-subida');
-document.getElementById('subir').addEventListener('click', () => { errorSubida.textContent = ''; dialogoSubida.showModal(); });
+const botonSubirLista = document.getElementById('elegir-archivos');
+const suelta = document.getElementById('suelta');
+const miniaturas = document.getElementById('miniaturas');
+let porSubir = [];
+
+function revisarSubida() {
+  botonSubirLista.disabled = !(porSubir.length && iaSubida && document.getElementById('mayor-pc').checked);
+  botonSubirLista.textContent = porSubir.length ? `Subir ${porSubir.length} foto${porSubir.length > 1 ? 's' : ''}` : 'Subir fotos';
+}
+
+function pintarMiniaturas() {
+  miniaturas.querySelectorAll('img').forEach(i => URL.revokeObjectURL(i.src));
+  miniaturas.innerHTML = '';
+  porSubir.forEach((a, i) => {
+    const fig = document.createElement('figure');
+    fig.innerHTML = `<img alt="Foto ${i + 1}"><button type="button" class="quitar" aria-label="Quitar foto ${i + 1}">×</button>`;
+    fig.querySelector('img').src = URL.createObjectURL(a);
+    fig.querySelector('.quitar').addEventListener('click', () => { porSubir.splice(i, 1); pintarMiniaturas(); });
+    miniaturas.append(fig);
+  });
+  miniaturas.hidden = !porSubir.length;
+  revisarSubida();
+}
+
+function agregarFotos(lista) {
+  const fotos = [...lista].filter(a => a.type.startsWith('image/'));
+  if (fotos.length < lista.length) errorSubida.textContent = 'Algunos archivos no eran fotos y no se agregaron.';
+  porSubir.push(...fotos);
+  pintarMiniaturas();
+}
+
+document.getElementById('subir').addEventListener('click', () => {
+  errorSubida.textContent = '';
+  porSubir = [];
+  pintarMiniaturas();
+  dialogoSubida.showModal();
+});
+suelta.addEventListener('click', () => archivo.click());
+['dragenter', 'dragover'].forEach(ev => dialogoSubida.addEventListener(ev, e => { e.preventDefault(); suelta.classList.add('encima'); }));
+['dragleave', 'drop'].forEach(ev => dialogoSubida.addEventListener(ev, e => { e.preventDefault(); suelta.classList.remove('encima'); }));
+dialogoSubida.addEventListener('drop', e => agregarFotos(e.dataTransfer.files));
+document.getElementById('mayor-pc').addEventListener('change', revisarSubida);
 document.querySelectorAll('[data-tipo-subida]').forEach(b => b.addEventListener('click', () => {
   tipoSubida = b.dataset.tipoSubida;
   document.querySelectorAll('[data-tipo-subida]').forEach(x => x.setAttribute('aria-pressed', x === b));
@@ -139,28 +180,25 @@ document.querySelectorAll('[data-tipo-subida]').forEach(b => b.addEventListener(
 document.querySelectorAll('[data-ia-subida]').forEach(b => b.addEventListener('click', () => {
   iaSubida = b.dataset.iaSubida;
   document.querySelectorAll('[data-ia-subida]').forEach(x => x.setAttribute('aria-pressed', x === b));
+  revisarSubida();
 }));
-document.getElementById('elegir-archivos').addEventListener('click', () => {
-  if (!iaSubida) {
-    errorSubida.textContent = 'Elige la IA: Colab o Gemini.';
-    return;
-  }
-  if (!document.getElementById('mayor-pc').checked) {
-    errorSubida.textContent = 'Marca la casilla: solo se procesan fotos de mayores de 18 años.';
-    return;
-  }
-  archivo.click();
-});
-archivo.addEventListener('change', async () => {
-  const lista = [...archivo.files];
+archivo.addEventListener('change', () => {
+  agregarFotos(archivo.files);
   archivo.value = '';
-  let fallidas = 0;
-  for (const a of lista) {
-    errorSubida.textContent = `Subiendo ${lista.indexOf(a) + 1} de ${lista.length}…`;
-    try { await subirFoto(a, tipoSubida, 'PC', iaSubida); } catch (e) { fallidas += 1; }
+});
+botonSubirLista.addEventListener('click', async () => {
+  const lista = porSubir;
+  botonSubirLista.disabled = true;
+  const fallidas = [];
+  for (const [i, a] of lista.entries()) {
+    errorSubida.textContent = `Subiendo ${i + 1} de ${lista.length}…`;
+    try { await subirFoto(a, tipoSubida, 'PC', iaSubida); } catch (e) { fallidas.push(a); }
   }
-  if (fallidas) errorSubida.textContent = `${fallidas} foto(s) no se pudieron subir. Revisa que sean JPG o PNG.`;
-  else dialogoSubida.close();
+  // Las que fallaron quedan en la lista para reintentar
+  porSubir = fallidas;
+  pintarMiniaturas();
+  if (fallidas.length) errorSubida.textContent = `${fallidas.length} foto(s) no se pudieron subir. Revisa que sean JPG o PNG y vuelve a intentar.`;
+  else { errorSubida.textContent = ''; dialogoSubida.close(); }
 });
 
 // ---------- Detalle de una foto ----------
