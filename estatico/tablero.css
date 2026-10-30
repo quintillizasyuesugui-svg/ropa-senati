@@ -106,7 +106,27 @@ legend { font-size: .9rem; font-weight: 600; margin-bottom: .4rem; }
 .modal header { display: flex; align-items: center; padding: 1rem 1.4rem; }
 .modal header h2 { font-size: 1.15rem; }
 .cerrar { margin-left: auto; width: 44px; height: 44px; border: 0; background: var(--suave); border-radius: 50%; font-size: 1.4rem; color: var(--tinta); }
-.escena { min-height: 0; margin: 0 1.4rem; display: grid; }
+.escena { min-height: 0; margin: 0 1.4rem; display: grid; position: relative; }
+.boton.ampliar { position: absolute; right: .6rem; bottom: .6rem; z-index: 3; min-height: 44px; box-shadow: 0 2px 8px rgba(15,23,42,.2); }
+.escena:has(.foto-sola) .boton.ampliar { top: .6rem; bottom: auto; }
+
+/* Foto ampliada en pantalla completa, con zoom y antes/después */
+#ampliada { width: 100vw; height: 100dvh; max-width: none; max-height: none; margin: 0; padding: 0; border: 0;
+  background: rgba(15,23,42,.96); color: #fff; }
+#ampliada[open] { display: grid; grid-template-rows: auto 1fr; }
+#ampliada::backdrop { background: rgba(15,23,42,.6); }
+.barra-ampliada { display: flex; gap: .6rem; align-items: center; padding: .7rem 1rem; }
+.segmento.oscuro { background: rgba(255,255,255,.12); }
+.segmento.oscuro button { color: #E2E8F0; }
+.segmento.oscuro button[aria-pressed="true"] { background: #fff; color: var(--marino); }
+.lienzo { position: relative; overflow: hidden; touch-action: none; user-select: none; cursor: grab; min-height: 0; }
+.lienzo.arrastrando { cursor: grabbing; }
+.lienzo img { width: 100%; height: 100%; object-fit: contain; transform-origin: 0 0; pointer-events: none; -webkit-user-drag: none; }
+.controles-zoom { position: absolute; left: 50%; bottom: 1rem; transform: translateX(-50%); display: flex; align-items: center; gap: .3rem;
+  background: rgba(255,255,255,.96); border-radius: 12px; padding: .25rem; box-shadow: 0 2px 10px rgba(0,0,0,.3); }
+.controles-zoom button { width: 44px; height: 44px; border: 0; border-radius: 10px; background: none; font-size: 1.35rem; font-weight: 700; color: var(--marino); cursor: pointer; }
+.controles-zoom button:hover { background: var(--suave); }
+#nivel-zoom { min-width: 3.4rem; text-align: center; font-size: .82rem; font-weight: 600; color: var(--tinta); }
 .escena > * { min-height: 0; }
 .foto-sola { background: var(--suave); border-radius: var(--radio); overflow: hidden; position: relative; }
 .foto-sola img { width: 100%; height: 100%; object-fit: contain; }

@@ -236,6 +236,8 @@ function pintarDetalle() {
       escena.innerHTML = `<div class="foto-sola"><img src="${base}/original" alt="Foto recibida">
         <div class="aviso-avance" hidden><span></span><div class="progreso"><i></i></div></div></div>`;
     }
+    escena.insertAdjacentHTML('beforeend', '<button class="boton ampliar" type="button">⤢ Ampliar</button>');
+    escena.querySelector('.ampliar').addEventListener('click', () => abrirAmpliada(f));
   }
   const aviso = escena.querySelector('.aviso-avance');
   if (aviso) {
@@ -258,6 +260,93 @@ function pintarDetalle() {
 }
 
 document.querySelectorAll('[data-repetir]').forEach(b => b.addEventListener('click', () => { tipoRepetir = b.dataset.repetir; pintarDetalle(); }));
+
+// ---------- Foto ampliada: pantalla completa con zoom (botones, rueda, dos dedos) y antes/después ----------
+const ampliada = document.getElementById('ampliada');
+const lienzo = document.getElementById('lienzo');
+const imgAmpliada = document.getElementById('img-ampliada');
+const zoom = { z: 1, x: 0, y: 0, dedos: new Map(), distancia: 0, ultimoToque: 0, base: '', fin: 0 };
+
+function pintarZoom() {
+  const r = lienzo.getBoundingClientRect();
+  zoom.z = Math.min(5, Math.max(1, zoom.z));
+  zoom.x = Math.min(0, Math.max(r.width - r.width * zoom.z, zoom.x));
+  zoom.y = Math.min(0, Math.max(r.height - r.height * zoom.z, zoom.y));
+  imgAmpliada.style.transform = `translate(${zoom.x}px, ${zoom.y}px) scale(${zoom.z})`;
+  document.getElementById('nivel-zoom').textContent = `${Math.round(zoom.z * 100)}%`;
+}
+
+function acercar(factor, cx, cy) {
+  const r = lienzo.getBoundingClientRect();
+  cx ??= r.width / 2; cy ??= r.height / 2;
+  const nuevo = Math.min(5, Math.max(1, zoom.z * factor));
+  zoom.x = cx - (cx - zoom.x) * (nuevo / zoom.z);
+  zoom.y = cy - (cy - zoom.y) * (nuevo / zoom.z);
+  zoom.z = nuevo;
+  pintarZoom();
+}
+
+function verAmpliada(cual) {
+  imgAmpliada.src = cual === 'resultado' ? `${zoom.base}/resultado?v=${zoom.fin}` : `${zoom.base}/original`;
+  document.querySelectorAll('[data-ver]').forEach(b => b.setAttribute('aria-pressed', b.dataset.ver === cual));
+}
+
+function abrirAmpliada(f) {
+  zoom.base = `/api/salas/${sala}/fotos/${f.id}`;
+  zoom.fin = f.fin;
+  document.getElementById('ver-cual').hidden = f.estado !== 'lista';
+  verAmpliada(f.estado === 'lista' ? 'resultado' : 'original');
+  ampliada.showModal();
+  zoom.z = 1; zoom.x = zoom.y = 0;
+  pintarZoom();
+}
+
+document.querySelectorAll('[data-ver]').forEach(b => b.addEventListener('click', () => verAmpliada(b.dataset.ver)));
+document.getElementById('cerrar-ampliada').addEventListener('click', () => ampliada.close());
+document.querySelectorAll('[data-zoom]').forEach(b => {
+  b.addEventListener('pointerdown', e => e.stopPropagation());
+  b.addEventListener('click', () => acercar(b.dataset.zoom > 0 ? 1.5 : 1 / 1.5));
+});
+ampliada.addEventListener('keydown', e => {
+  if (e.key === '+' || e.key === '=') acercar(1.5);
+  if (e.key === '-') acercar(1 / 1.5);
+});
+lienzo.addEventListener('wheel', e => {
+  e.preventDefault();
+  const r = lienzo.getBoundingClientRect();
+  acercar(e.deltaY < 0 ? 1.2 : 1 / 1.2, e.clientX - r.left, e.clientY - r.top);
+}, { passive: false });
+lienzo.addEventListener('pointerdown', e => {
+  lienzo.setPointerCapture(e.pointerId);
+  zoom.dedos.set(e.pointerId, { x: e.clientX, y: e.clientY });
+  lienzo.classList.add('arrastrando');
+  // Doble toque: vuelve al tamaño normal
+  if (Date.now() - zoom.ultimoToque < 300) { zoom.z = 1; zoom.x = zoom.y = 0; pintarZoom(); }
+  zoom.ultimoToque = Date.now();
+});
+lienzo.addEventListener('pointermove', e => {
+  const antes = zoom.dedos.get(e.pointerId);
+  if (!antes) return;
+  zoom.dedos.set(e.pointerId, { x: e.clientX, y: e.clientY });
+  if (zoom.dedos.size === 2) {
+    const [a, b] = [...zoom.dedos.values()];
+    const d = Math.hypot(a.x - b.x, a.y - b.y);
+    const r = lienzo.getBoundingClientRect();
+    if (zoom.distancia) acercar(d / zoom.distancia, (a.x + b.x) / 2 - r.left, (a.y + b.y) / 2 - r.top);
+    zoom.distancia = d;
+  } else {
+    zoom.x += e.clientX - antes.x;
+    zoom.y += e.clientY - antes.y;
+    pintarZoom();
+  }
+});
+const soltarDedo = e => {
+  zoom.dedos.delete(e.pointerId);
+  zoom.distancia = 0;
+  if (!zoom.dedos.size) lienzo.classList.remove('arrastrando');
+};
+lienzo.addEventListener('pointerup', soltarDedo);
+lienzo.addEventListener('pointercancel', soltarDedo);
 document.getElementById('cerrar').addEventListener('click', () => detalle.close());
 detalle.addEventListener('close', () => { abierta = null; });
 // R3: un botón por IA. La foto vuelve a la fila de la IA elegida y el resultado nuevo reemplaza al anterior.

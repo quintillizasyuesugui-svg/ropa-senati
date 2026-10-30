@@ -96,6 +96,25 @@
     </div>
   </dialog>
 
+  <dialog id="ampliada" aria-label="Foto ampliada">
+    <div class="barra-ampliada">
+      <div class="segmento oscuro" role="group" aria-label="Qué foto ver" id="ver-cual">
+        <button data-ver="original" aria-pressed="false">Antes</button>
+        <button data-ver="resultado" aria-pressed="true">Con uniforme</button>
+      </div>
+      <span class="espacio"></span>
+      <button class="boton" id="cerrar-ampliada" autofocus>Cerrar</button>
+    </div>
+    <div class="lienzo" id="lienzo">
+      <img id="img-ampliada" alt="Foto ampliada">
+      <div class="controles-zoom">
+        <button data-zoom="-1" aria-label="Alejar">−</button>
+        <span id="nivel-zoom">100%</span>
+        <button data-zoom="1" aria-label="Acercar">+</button>
+      </div>
+    </div>
+  </dialog>
+
 <script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js"></script>
 <script src="https://js.puter.com/v2/" defer></script>
 <script src="/estatico/comun.js"></script>
