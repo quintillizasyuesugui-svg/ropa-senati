@@ -64,6 +64,14 @@
       <header><h2 id="detalle-titulo">Foto</h2><button class="cerrar" id="cerrar" aria-label="Cerrar">×</button></header>
       <div class="escena" id="escena"></div>
       <p class="error-form" id="detalle-error" role="alert"></p>
+      <div class="gemini" id="gemini-fila">
+        <p><b>¿Falló o no quedó bien?</b> Pruébala con Gemini. Usa el saldo gratis de tu cuenta de Puter (pocas fotos por cuenta).</p>
+        <p class="gemini-estado" id="gemini-estado" role="status"></p>
+        <div class="gemini-botones">
+          <button class="boton" id="gemini-cuenta">Cambiar cuenta</button>
+          <button class="boton dorado" id="gemini">Probar con Gemini</button>
+        </div>
+      </div>
       <footer>
         <button class="boton peligro" id="borrar">Borrar</button>
         <span class="espacio"></span>
@@ -78,6 +86,7 @@
   </dialog>
 
 <script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js"></script>
+<script src="https://js.puter.com/v2/" defer></script>
 <script src="/estatico/comun.js"></script>
 <script src="/estatico/tablero.js"></script>
 </body>

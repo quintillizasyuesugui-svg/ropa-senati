@@ -36,14 +36,31 @@ function faltaFoto(f, datos) {
   return Math.max(5, datos.segundos_por_foto - pasado);
 }
 
+const iconoTacho = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/></svg>`;
+
 function crearTarjeta(f) {
-  const boton = document.createElement('button');
+  const boton = document.createElement('div');
   boton.className = 'tarjeta';
-  boton.innerHTML = `<div class="img"><img alt="" loading="lazy"><span class="chip"></span>
+  boton.innerHTML = `<button class="abrir"><div class="img"><img alt="" loading="lazy"><span class="chip"></span>
       <div class="progreso" hidden><i></i></div></div>
-    <div class="datos"><b>Foto ${f.id}</b><span class="info"></span></div>`;
+    <div class="datos"><b>Foto ${f.id}</b><span class="info"></span></div></button>
+    <button class="tacho" aria-label="Borrar foto ${f.id}" title="Borrar foto">${iconoTacho}</button>`;
   boton.querySelector('img').src = `/api/salas/${sala}/fotos/${f.id}/original`;
-  boton.addEventListener('click', () => abrirDetalle(f.id));
+  boton.querySelector('.abrir').addEventListener('click', () => abrirDetalle(f.id));
+  const tacho = boton.querySelector('.tacho');
+  // Primer toque pide confirmar, el segundo borra: así no se borra por un roce
+  tacho.addEventListener('click', async () => {
+    if (!tacho.classList.contains('seguro')) {
+      tacho.classList.add('seguro');
+      tacho.innerHTML = `${iconoTacho}<span>¿Borrar?</span>`;
+      setTimeout(() => { tacho.classList.remove('seguro'); tacho.innerHTML = iconoTacho; }, 3000);
+      return;
+    }
+    boton.classList.add('borrando');
+    await api(`/fotos/${f.id}`, { method: 'DELETE' }).catch(() => {});
+    boton.remove();
+    tarjetas.delete(f.id);
+  });
   rejilla.prepend(boton);
   return { boton, estado: null, tipo: null };
 }
@@ -143,6 +160,7 @@ function abrirDetalle(id) {
   escenaDe = '';
   const f = ultimo.fotos.find(x => x.id === id);
   tipoRepetir = f.tipo;
+  avisoGemini('');
   document.getElementById('detalle-error').textContent = '';
   pintarDetalle();
   detalle.showModal();
@@ -182,6 +200,7 @@ function pintarDetalle() {
   descargar.href = `${base}/resultado`;
   descargar.download = `uniforme_${f.id}.jpg`;
   document.getElementById('repetir').disabled = f.estado === 'haciendo';
+  document.getElementById('gemini-fila').hidden = !['lista', 'error'].includes(f.estado);
   document.querySelectorAll('[data-repetir]').forEach(b => b.setAttribute('aria-pressed', b.dataset.repetir === tipoRepetir));
 }
 
@@ -199,6 +218,73 @@ document.getElementById('borrar').addEventListener('click', async () => {
   detalle.close();
   await api(`/fotos/${id}`, { method: 'DELETE' }).catch(() => {});
 });
+// ---------- Respaldo con Gemini por Puter (se hace en este navegador) ----------
+const PEDIDO_GEMINI = 'Edit the first photo: dress the person in exactly the outfit shown in the second image '
+  + '(same blazer, white shirt, tie with its logo, trousers and black shoes, same colors and details). '
+  + 'Keep the face, hair, skin, body shape, pose, hands, background, lighting, camera angle and framing of the first photo exactly the same. '
+  + 'Photorealistic, natural fit and folds. Return only the edited photo.';
+const estadoGemini = document.getElementById('gemini-estado');
+const botonGemini = document.getElementById('gemini');
+
+function avisoGemini(texto, clase = '') { estadoGemini.textContent = texto; estadoGemini.className = `gemini-estado ${clase}`; }
+
+function textoErrorPuter(error) {
+  const texto = typeof error === 'string' ? error : JSON.stringify(error?.error || error?.message || error || '');
+  if (/insufficient|funds|credit|balance|limit|quota|usage/i.test(texto)) {
+    return 'Se acabó el saldo gratis de esta cuenta de Puter. Toca «Cambiar cuenta» y entra con otra.';
+  }
+  if (/safety|policy|blocked|prohibit/i.test(texto)) return 'Gemini no quiso hacer esta foto. Toma otra de frente y con buena luz.';
+  if (/cancel|closed|popup/i.test(texto)) return 'No se inició sesión en Puter.';
+  return `Gemini falló: ${texto.slice(0, 160)}`;
+}
+
+async function comoBlob(url) {
+  const r = await fetch(url, { cache: 'no-store' });
+  if (!r.ok) throw new Error(`No se pudo leer ${url}`);
+  return r.blob();
+}
+
+botonGemini.addEventListener('click', async () => {
+  const id = abierta;
+  const f = ultimo.fotos.find(x => x.id === id);
+  if (!f) return;
+  if (!window.puter) { avisoGemini('Puter no cargó. Revisa el internet y recarga la página.', 'mal'); return; }
+  botonGemini.disabled = true;
+  try {
+    if (!puter.auth.isSignedIn()) { avisoGemini('Inicia sesión en Puter en la ventana que se abrió…'); await puter.auth.signIn(); }
+    avisoGemini('Gemini está poniendo el uniforme… (unos 20 a 40 s)');
+    const tipo = tipoRepetir || f.tipo;
+    const [persona, uniforme] = await Promise.all([
+      comoBlob(`/api/salas/${sala}/fotos/${id}/original`),
+      comoBlob(`/estatico/uniforme_${tipo === 'chico' ? 'hombre' : 'mujer'}.webp`),
+    ]);
+    const imagen = await puter.ai.txt2img(PEDIDO_GEMINI, {
+      model: 'gemini-3.1-flash-image', input_images: [persona, uniforme],
+    });
+    const resultado = await comoBlob(imagen.src);
+    const datos = new FormData();
+    datos.append('imagen', resultado, 'gemini.png');
+    await api(`/fotos/${id}/resultado-gemini`, { method: 'POST', body: datos });
+    avisoGemini('Listo: la foto quedó hecha con Gemini.', 'ok');
+  } catch (error) {
+    console.log(error);
+    avisoGemini(textoErrorPuter(error), 'mal');
+  } finally {
+    botonGemini.disabled = false;
+  }
+});
+
+document.getElementById('gemini-cuenta').addEventListener('click', async () => {
+  if (!window.puter) { avisoGemini('Puter no cargó. Revisa el internet y recarga la página.', 'mal'); return; }
+  try {
+    if (puter.auth.isSignedIn()) await puter.auth.signOut();
+    await puter.auth.signIn();
+    avisoGemini('Cuenta cambiada. Ya puedes probar con Gemini.', 'ok');
+  } catch (error) {
+    avisoGemini(textoErrorPuter(error), 'mal');
+  }
+});
+
 document.getElementById('borrar-todo').addEventListener('click', async () => {
   const boton = document.getElementById('borrar-todo');
   if (boton.dataset.seguro !== 'si') {

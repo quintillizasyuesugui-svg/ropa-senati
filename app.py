@@ -177,6 +177,23 @@ def repetir(sala: str, id_foto: int, tipo: str = Form(...)):
     return {"ok": True}
 
 
+@app.post("/api/salas/{sala}/fotos/{id_foto}/resultado-gemini")
+async def resultado_gemini(sala: str, id_foto: int, imagen: UploadFile = File(...)):
+    """Resultado hecho en el navegador con Gemini (Puter), respaldo para fotos que fallaron."""
+    foto = foto_o_404(sala, id_foto)
+    contenido = await imagen.read()
+    if len(contenido) > MAX_BYTES:
+        raise HTTPException(413, "La imagen de Gemini pesa más de 8 MB.")
+    if not contenido.startswith((b"\xff\xd8", b"\x89PNG", b"RIFF")):
+        raise HTTPException(400, "Gemini no devolvió una imagen válida.")
+    with candado:
+        if foto["estado"] == "haciendo":
+            raise HTTPException(409, "Esta foto se está procesando ahora.")
+        (DATOS / sala / f"{id_foto}_resultado").write_bytes(contenido)
+        foto.update(estado="lista", error="", fin=ahora())
+    return {"ok": True}
+
+
 @app.delete("/api/salas/{sala}/fotos/{id_foto}")
 def borrar_foto(sala: str, id_foto: int):
     datos = sala_o_404(sala)
