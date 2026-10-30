@@ -7,6 +7,7 @@ Uso en el cuaderno (después de cargar el modelo y la función vestir):
     import motor
     motor.encender(pipeline, vestir, uniformes, clave)
 """
+import functools
 import io
 import threading
 import time
@@ -21,10 +22,16 @@ def encender(pipeline, vestir, uniformes, clave, direccion=DIRECCION, pasos=50):
     cabecera = {"X-Clave": clave}
     nombre_motor = f"colab-{int(time.time()) % 10000}"
 
+    # Si el motor ya se encendió antes en esta sesión, quita los vigilantes viejos:
+    # envolverlos dos veces hacía que se llamaran a sí mismos sin fin.
+    vars(pipeline.noise_scheduler).pop("step", None)
+    vars(pipeline).pop("run_safety_checker", None)
+
     # Cuenta los pasos de la IA para mandar el avance real a la página
     contador = {"paso": 0}
     paso_original = pipeline.noise_scheduler.step
 
+    @functools.wraps(paso_original)
     def paso_vigilado(*args, **kwargs):
         contador["paso"] += 1
         return paso_original(*args, **kwargs)
