@@ -132,7 +132,9 @@ def revisar_clave(clave):
 
 
 def publica(foto):
-    return {k: foto.get(k) for k in ("id", "tipo", "origen", "ia", "estado", "paso", "pasos", "error", "creada", "inicio", "fin")}
+    datos = {k: foto.get(k) for k in ("id", "tipo", "origen", "ia", "estado", "paso", "pasos", "error", "creada", "inicio", "fin")}
+    datos["numero"] = foto.get("numero", foto["id"])
+    return datos
 
 
 def limpiar_viejas():
@@ -177,7 +179,7 @@ def estado_de_espera(ia):
 @app.get("/api/salas/{sala}")
 def estado_sala(sala: str):
     datos = sala_o_404(sala)
-    fotos = sorted(datos["fotos"].values(), key=lambda f: f["id"])
+    fotos = sorted(datos["fotos"].values(), key=lambda f: (f.get("numero", f["id"]), f["id"]))
     en_fila = [f for f in fotos if f["estado"] in ("cola", "haciendo", "gemini")]
     return {
         "fotos": [publica(f) for f in fotos],
@@ -207,9 +209,13 @@ async def subir_foto(sala: str, foto: UploadFile = File(...), tipo: str = Form(.
     with candado:
         id_foto = datos["siguiente"]
         datos["siguiente"] += 1
+        # El número que se ve es el más bajo libre: si borran la foto 1, la siguiente vuelve a ser la 1.
+        # El id interno no se repite, así un resultado viejo del motor nunca cae en una foto nueva.
+        usados = {f.get("numero", f["id"]) for f in datos["fotos"].values()}
+        numero = next(n for n in range(1, len(usados) + 2) if n not in usados)
         guardar(sala, f"{id_foto}_original", contenido)
         datos["fotos"][id_foto] = {
-            "id": id_foto, "tipo": tipo, "origen": "Celular" if origen == "Celular" else "PC",
+            "id": id_foto, "numero": numero, "tipo": tipo, "origen": "Celular" if origen == "Celular" else "PC",
             "estado": estado_de_espera(ia), "ia": "gemini" if ia == "gemini" else "colab",
             "paso": 0, "pasos": 0, "error": "",
             "creada": ahora(), "inicio": 0, "fin": 0,
@@ -296,10 +302,10 @@ def descargar_zip(sala: str):
     datos = sala_o_404(sala)
     memoria = io.BytesIO()
     with zipfile.ZipFile(memoria, "w", zipfile.ZIP_STORED) as z:
-        for foto in sorted(datos["fotos"].values(), key=lambda f: f["id"]):
+        for foto in sorted(datos["fotos"].values(), key=lambda f: (f.get("numero", f["id"]), f["id"])):
             contenido = leer(sala, f"{foto['id']}_resultado") if foto["estado"] == "lista" else None
             if contenido:
-                z.writestr(f"uniforme_{foto['id']:03d}_{foto['tipo']}.jpg", contenido)
+                z.writestr(f"uniforme_{foto.get('numero', foto['id']):03d}_{foto['tipo']}.jpg", contenido)
     memoria.seek(0)
     return StreamingResponse(memoria, media_type="application/zip",
                              headers={"Content-Disposition": 'attachment; filename="uniformes_senati.zip"'})

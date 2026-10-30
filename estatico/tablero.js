@@ -47,8 +47,8 @@ function crearTarjeta(f) {
   boton.className = 'tarjeta';
   boton.innerHTML = `<button class="abrir"><div class="img"><img alt="" loading="lazy"><span class="chip"></span>
       <div class="progreso" hidden><i></i></div></div>
-    <div class="datos"><b>Foto ${f.id}</b><span class="info"></span></div></button>
-    <button class="tacho" aria-label="Borrar foto ${f.id}" title="Borrar foto">${iconoTacho}</button>`;
+    <div class="datos"><b>Foto ${f.numero}</b><span class="info"></span></div></button>
+    <button class="tacho" aria-label="Borrar foto ${f.numero}" title="Borrar foto">${iconoTacho}</button>`;
   boton.querySelector('img').src = `/api/salas/${sala}/fotos/${f.id}/original`;
   boton.querySelector('.abrir').addEventListener('click', () => abrirDetalle(f.id));
   const tacho = boton.querySelector('.tacho');
@@ -96,6 +96,9 @@ function pintar(datos) {
     if (!tarjetas.has(f.id)) tarjetas.set(f.id, crearTarjeta(f));
     pintarTarjeta(tarjetas.get(f.id), f, datos);
   }
+  // Orden por número, la más alta arriba: una foto que reusa un número borrado ocupa ese lugar
+  const orden = [...datos.fotos].reverse().map(f => tarjetas.get(f.id).boton);
+  if (orden.some((b, i) => rejilla.children[i] !== b)) [...orden].reverse().forEach(b => rejilla.prepend(b));
   vacio.hidden = datos.fotos.length > 0;
 
   const listas = datos.fotos.filter(f => f.estado === 'lista').length;
@@ -221,7 +224,7 @@ function abrirDetalle(id) {
 function pintarDetalle() {
   const f = ultimo.fotos.find(x => x.id === abierta);
   if (!f) { detalle.close(); abierta = null; return; }
-  document.getElementById('detalle-titulo').textContent = `Foto ${f.id} · uniforme de ${f.tipo} · desde ${f.origen === 'PC' ? 'la PC' : 'el celular'}`;
+  document.getElementById('detalle-titulo').textContent = `Foto ${f.numero} · uniforme de ${f.tipo} · desde ${f.origen === 'PC' ? 'la PC' : 'el celular'}`;
   const base = `/api/salas/${sala}/fotos/${f.id}`;
   const clave = `${f.estado}-${f.fin}`;
   if (escenaDe !== clave) {
@@ -254,7 +257,7 @@ function pintarDetalle() {
   const descargar = document.getElementById('descargar');
   descargar.hidden = f.estado !== 'lista';
   descargar.href = `${base}/resultado`;
-  descargar.download = `uniforme_${f.id}.jpg`;
+  descargar.download = `uniforme_${f.numero}.jpg`;
   document.querySelectorAll('[data-repetir-ia]').forEach(b => { b.disabled = f.estado === 'haciendo' || geminiTrabajando === f.id; });
   document.querySelectorAll('[data-repetir]').forEach(b => b.setAttribute('aria-pressed', b.dataset.repetir === tipoRepetir));
 }
