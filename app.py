@@ -105,7 +105,8 @@ def armar_estado(sala):
         return None
     with candado:
         fotos = {str(i): {k: v for k, v in f.items() if k not in ("paso", "motor")} for i, f in datos["fotos"].items()}
-        return json.dumps({"creada": datos["creada"], "siguiente": datos["siguiente"], "fotos": fotos})
+        return json.dumps({"creada": datos["creada"], "siguiente": datos["siguiente"], "fotos": fotos,
+                           "segundos_por_foto": motor["segundos_por_foto"]})
 
 
 def recuperar_salas():
@@ -127,6 +128,8 @@ def recuperar_salas():
                 fotos[id_foto]["numero"] = numero
             almacen.guardar_estado(sala)
         salas[sala] = {"creada": guardada["creada"], "siguiente": guardada["siguiente"], "fotos": fotos}
+        if guardada.get("segundos_por_foto"):
+            motor["segundos_por_foto"] = guardada["segundos_por_foto"]
 
 
 def foto_o_404(sala, id_foto):
@@ -377,7 +380,14 @@ def avance(sala: str, id_foto: int, paso: int = Form(...), pasos: int = Form(...
     revisar_clave(x_clave)
     foto = foto_o_404(sala, id_foto)
     marcar_motor(foto.get("motor"))
-    foto.update(paso=paso, pasos=pasos)
+    with candado:
+        # Render se reinició y la foto volvió a la fila, pero el motor la sigue haciendo: se marca otra vez
+        # como «haciendo» para que ningún otro motor la tome y el avance siga desde donde iba
+        if foto["estado"] == "cola" and pasos:
+            hecho = paso / pasos
+            foto.update(estado="haciendo", inicio=ahora() - hecho * motor["segundos_por_foto"],
+                        motor=foto.get("motor") or "motor", retomada=True)
+        foto.update(paso=paso, pasos=pasos)
     return {"ok": True}
 
 
@@ -394,7 +404,8 @@ async def resultado(sala: str, id_foto: int, imagen: UploadFile = File(None), er
     guardar(sala, f"{id_foto}_resultado", await imagen.read())
     duracion = ahora() - foto["inicio"]
     # Promedio móvil para calcular cuánto falta en la fila
-    motor["segundos_por_foto"] = motor["segundos_por_foto"] * 0.7 + duracion * 0.3
+    if not foto.pop("retomada", False):
+        motor["segundos_por_foto"] = motor["segundos_por_foto"] * 0.7 + duracion * 0.3
     foto.update(estado="lista", fin=ahora(), paso=foto["pasos"])
     almacen.guardar_estado(sala)
     return {"ok": True}

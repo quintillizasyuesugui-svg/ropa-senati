@@ -61,7 +61,8 @@ def encender(pipeline, vestir, uniformes, clave, direccion=DIRECCION, pasos=50):
 
     def devolver(sala, id_foto, imagen=None, error=""):
         url = f"{direccion}/api/motor/resultado/{sala}/{id_foto}"
-        for _ in range(3):
+        # Hasta unos 5 minutos de reintentos: lo que tarda Render en reiniciarse o despertar
+        for intento in range(12):
             try:
                 if imagen is None:
                     requests.post(url, headers=cabecera, data={"error": error}, timeout=60)
@@ -72,7 +73,8 @@ def encender(pipeline, vestir, uniformes, clave, direccion=DIRECCION, pasos=50):
                                   files={"imagen": ("resultado.jpg", memoria.getvalue(), "image/jpeg")})
                 return
             except requests.RequestException:
-                time.sleep(3)
+                time.sleep(min(5 * (intento + 1), 30))
+        print(f"No se pudo devolver la foto {id_foto}: la página no respondió en 5 minutos")
 
     print("Motor encendido. Esperando fotos de la página…")
     hechas = 0

@@ -23,9 +23,16 @@ if (window.qrcode) {
 }
 
 let geminiTrabajando = null;
+// Gemini no avisa por qué paso va: el avance se calcula con lo que tardaron las fotos anteriores en esta PC
+// y se queda en 95 % hasta que la foto llega de verdad.
+const avanceGemini = { inicio: 0, segundos: Number(localStorage.getItem('segundosGemini')) || 40 };
+const geminiPasado = () => (Date.now() - avanceGemini.inicio) / 1000;
+const geminiPorcentaje = () => Math.min(95, Math.round((geminiPasado() / avanceGemini.segundos) * 100));
+const geminiFalta = () => Math.max(3, avanceGemini.segundos - geminiPasado());
+
 const textoEstado = f => ({
   cola: 'En espera',
-  gemini: geminiTrabajando === f.id ? 'Gemini trabajando…' : 'Espera Gemini',
+  gemini: geminiTrabajando === f.id ? `Gemini ${geminiPorcentaje()}%` : 'Espera Gemini',
   haciendo: f.pasos ? `Poniendo ${Math.round((f.paso / f.pasos) * 100)}%` : 'Empezando…',
   lista: 'Lista',
   error: 'No se pudo',
@@ -33,11 +40,15 @@ const textoEstado = f => ({
 
 function faltaFoto(f, datos) {
   if (f.estado === 'cola') return datos.segundos_por_foto;
-  if (f.estado === 'gemini') return SEGUNDOS_GEMINI;
+  if (f.estado === 'gemini') return geminiTrabajando === f.id ? geminiFalta() : avanceGemini.segundos;
   if (f.estado !== 'haciendo') return 0;
   const pasado = datos.ahora - f.inicio;
-  if (f.paso > 0) return ((f.pasos - f.paso) * pasado) / f.paso + 3;
-  return Math.max(5, datos.segundos_por_foto - pasado);
+  const promedio = datos.segundos_por_foto;
+  if (!f.paso || !f.pasos) return Math.max(5, promedio - pasado);
+  const hecho = f.paso / f.pasos;
+  // Pasada la mitad, el ritmo real de esta foto ya es confiable y se usa
+  if (hecho >= 0.5) return Math.max(3, (pasado * (1 - hecho)) / hecho);
+  return Math.max(3, promedio * (1 - hecho));
 }
 
 const iconoTacho = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/></svg>`;
@@ -71,16 +82,18 @@ function crearTarjeta(f) {
 
 function pintarTarjeta(t, f, datos) {
   // Con 300 fotos se repinta cada 2 s: solo se toca la tarjeta si algo cambió
-  const firma = f.estado === 'haciendo' ? null : `${f.estado}|${f.tipo}|${f.fin}|${f.ia}|${f.origen}|${f.numero}|${geminiTrabajando === f.id}`;
+  const enMarcha = f.estado === 'haciendo' || (f.estado === 'gemini' && geminiTrabajando === f.id);
+  const firma = enMarcha ? null : `${f.estado}|${f.tipo}|${f.fin}|${f.ia}|${f.origen}|${f.numero}|${geminiTrabajando === f.id}`;
   if (firma && firma === t.firma) return;
   t.firma = firma;
   const chip = t.boton.querySelector('.chip');
   chip.className = `chip ${f.estado === 'gemini' ? 'espera-gemini' : f.estado}`;
   chip.textContent = textoEstado(f);
   const barra = t.boton.querySelector('.progreso');
-  barra.hidden = f.estado !== 'haciendo';
-  barra.firstElementChild.style.width = f.pasos ? `${(f.paso / f.pasos) * 100}%` : '3%';
-  t.boton.querySelector('.info').textContent = f.estado === 'haciendo'
+  barra.hidden = !enMarcha;
+  barra.firstElementChild.style.width = f.estado === 'gemini' ? `${geminiPorcentaje()}%`
+    : f.pasos ? `${(f.paso / f.pasos) * 100}%` : '3%';
+  t.boton.querySelector('.info').textContent = enMarcha
     ? `falta ${textoTiempo(faltaFoto(f, datos))}`
     : `${f.tipo} · ${f.origen}${f.ia === 'gemini' ? ' · Gemini' : ''}`;
   // La imagen solo se recarga cuando cambia de estado, para que no parpadee
@@ -90,6 +103,24 @@ function pintarTarjeta(t, f, datos) {
     t.estado = f.estado;
     t.tipo = f.tipo;
   }
+}
+
+// El tiempo total baja con el reloj y se corrige de a poco: no salta de 3 min a 1 y de vuelta a 3.
+// Si llegan fotos nuevas o cambia la cantidad de motores, se toma el cálculo nuevo de una vez.
+const estimado = { valor: null, t: 0, clave: '' };
+function suavizar(crudo, datos) {
+  const clave = `${datos.fotos.filter(f => ['cola', 'haciendo', 'gemini'].includes(f.estado)).length}|${datos.motores}`;
+  const ahoraMs = Date.now();
+  let valor = crudo;
+  if (estimado.valor !== null && clave === estimado.clave) {
+    const esperado = Math.max(0, estimado.valor - (ahoraMs - estimado.t) / 1000);
+    valor = esperado + Math.max(-15, Math.min(8, crudo - esperado));
+  } else if (estimado.valor !== null && Number(clave.split('|')[0]) < Number(estimado.clave.split('|')[0])) {
+    // Terminó una foto: lo que quedaba menos esa foto, sin volver a subir
+    valor = Math.min(crudo, Math.max(0, estimado.valor - (ahoraMs - estimado.t) / 1000) + 15);
+  }
+  Object.assign(estimado, { valor, t: ahoraMs, clave });
+  return valor;
 }
 
 function pintar(datos) {
@@ -110,7 +141,7 @@ function pintar(datos) {
   document.getElementById('cuenta').textContent = `${listas} de ${total}`;
   document.getElementById('barra-total').style.width = total ? `${(listas / total) * 100}%` : '0';
   // Con varios motores la fila se reparte entre ellos
-  const falta = datos.fotos.reduce((s, f) => s + faltaFoto(f, datos), 0) / Math.max(1, datos.motores || 1);
+  const falta = suavizar(datos.fotos.reduce((s, f) => s + faltaFoto(f, datos), 0) / Math.max(1, datos.motores || 1), datos);
   document.getElementById('falta').textContent = falta > 0
     ? `Faltan unos ${textoTiempo(falta)} (≈ ${textoTiempo(datos.segundos_por_foto)} por foto)`
     : '';
@@ -250,12 +281,16 @@ function pintarDetalle() {
   if (aviso) {
     aviso.hidden = f.estado === 'error';
     const texto = f.estado === 'gemini'
-      ? (geminiTrabajando === f.id ? 'Gemini está poniendo el uniforme…' : 'Espera su turno con Gemini')
+      ? (geminiTrabajando === f.id
+        ? `Gemini está poniendo el uniforme · ${geminiPorcentaje()}% · falta ${textoTiempo(geminiFalta())}`
+        : 'Espera su turno con Gemini')
       : f.estado === 'cola'
       ? `En espera · ${ultimo.fotos.filter(x => x.estado === 'cola' && x.creada < f.creada).length} foto(s) antes`
       : `Poniendo el uniforme · paso ${f.paso} de ${f.pasos || '…'} · falta ${textoTiempo(faltaFoto(f, ultimo))}`;
     aviso.querySelector('span').textContent = texto;
-    aviso.querySelector('i').style.width = f.pasos ? `${(f.paso / f.pasos) * 100}%` : '0';
+    aviso.querySelector('i').style.width = f.estado === 'gemini'
+      ? (geminiTrabajando === f.id ? `${geminiPorcentaje()}%` : '0')
+      : f.pasos ? `${(f.paso / f.pasos) * 100}%` : '0';
   }
   if (f.estado === 'error') document.getElementById('detalle-error').textContent = f.error;
   const descargar = document.getElementById('descargar');
@@ -395,7 +430,6 @@ const pedidoGemini = (tipo) => 'Image 1 is a photo of a real person. Image 2 is 
   + 'Keep the face, hair, skin tone, glasses, body shape, pose, hands, background, lighting, camera angle and framing of image 1 exactly the same. '
   + 'It must be the same person: do not change the identity, facial features, expression, age, makeup or hairstyle, and do not move arms, legs, hands or head. '
   + 'Same image size and aspect ratio as image 1. Photorealistic, natural fit and folds. Return only the edited photo, without the example.';
-const SEGUNDOS_GEMINI = 30;
 const estadoGemini = document.getElementById('gemini-estado');
 const entrarPuter = document.getElementById('entrar-puter');
 let geminiSinCuenta = false;
@@ -524,8 +558,12 @@ async function cicloGemini(datos) {
   const f = datos.fotos.filter(x => x.estado === 'gemini').sort((a, b) => a.creada - b.creada)[0];
   if (!f) return;
   geminiTrabajando = f.id;
+  avanceGemini.inicio = Date.now();
   try {
     await hacerConGemini(f.id, f.tipo);
+    // Promedio de lo que tarda Gemini aquí, para que la barra de la próxima foto sea más precisa
+    avanceGemini.segundos = Math.round(avanceGemini.segundos * 0.6 + geminiPasado() * 0.4);
+    localStorage.setItem('segundosGemini', String(avanceGemini.segundos));
   } catch (error) {
     console.log(error);
     if (sinSaldo(error)) {
