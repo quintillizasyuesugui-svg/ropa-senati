@@ -1,0 +1,89 @@
+/* Paleta «autoridad + confianza»: azul marino, blanco y un solo acento dorado */
+:root {
+  --marino: #1E3A8A;
+  --marino-2: #1E40AF;
+  --tinta: #0F172A;
+  --gris: #475569;
+  --fondo: #F8FAFC;
+  --suave: #E9EEF5;
+  --borde: #CBD5E1;
+  --dorado: #B45309;
+  --dorado-claro: #FEF3C7;
+  --ok: #15803D;
+  --ok-claro: #DCFCE7;
+  --radio: 14px;
+}
+* { box-sizing: border-box; margin: 0; }
+html, body { height: 100%; }
+body {
+  font-family: "Work Sans", system-ui, sans-serif;
+  color: var(--tinta);
+  background: var(--fondo);
+  line-height: 1.45;
+}
+h1, h2, h3, .cifra { font-family: "Outfit", sans-serif; letter-spacing: -0.01em; }
+button, input, label.boton { font: inherit; }
+button, label.boton { cursor: pointer; }
+:focus-visible { outline: 3px solid var(--dorado); outline-offset: 2px; }
+img { display: block; max-width: 100%; }
+
+.boton {
+  display: inline-flex; align-items: center; justify-content: center; gap: .5rem;
+  min-height: 46px; padding: 0 1.1rem; border-radius: 12px; font-weight: 600;
+  border: 1.5px solid var(--borde); background: #fff; color: var(--tinta);
+  transition: background .15s, border-color .15s, transform .1s;
+}
+.boton:hover { border-color: var(--marino); }
+.boton:active { transform: scale(.98); }
+.boton.principal { background: var(--marino); border-color: var(--marino); color: #fff; }
+.boton.principal:hover { background: var(--marino-2); }
+.boton:disabled { opacity: .5; cursor: not-allowed; transform: none; }
+.boton svg { width: 20px; height: 20px; }
+
+.segmento { display: inline-grid; grid-auto-flow: column; background: var(--suave); border-radius: 12px; padding: 4px; }
+.segmento button {
+  border: 0; background: transparent; border-radius: 9px; min-height: 38px; padding: 0 1rem;
+  font-weight: 600; color: var(--gris);
+}
+.segmento button[aria-pressed="true"] { background: #fff; color: var(--marino); box-shadow: 0 1px 3px rgba(15,23,42,.12); }
+
+.chip { display: inline-flex; align-items: center; gap: .35rem; font-size: .8rem; font-weight: 600; border-radius: 99px; padding: .2rem .6rem; white-space: nowrap; }
+.chip::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+.chip.espera { background: var(--suave); color: var(--gris); }
+.chip.haciendo { background: var(--dorado-claro); color: var(--dorado); }
+.chip.lista { background: var(--ok-claro); color: var(--ok); }
+
+.qr-caja { background: #fff; border: 1.5px solid var(--borde); border-radius: var(--radio); padding: 1rem; display: grid; gap: .6rem; justify-items: center; text-align: center; }
+.qr-caja .qr { width: 150px; height: 150px; }
+.qr-caja .qr svg, .qr-caja .qr img { width: 100%; height: 100%; }
+.qr-caja p { font-size: .9rem; color: var(--gris); }
+.qr-caja strong { color: var(--tinta); }
+
+.vacio { display: grid; place-items: center; text-align: center; color: var(--gris); gap: .5rem; padding: 2rem; }
+.vacio svg { width: 40px; height: 40px; color: var(--borde); }
+
+/* Comparador antes / después con barra que se arrastra */
+.comparador { position: relative; overflow: hidden; border-radius: var(--radio); background: var(--suave); user-select: none; touch-action: none; }
+.comparador img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; }
+.comparador .despues { clip-path: inset(0 0 0 var(--corte, 50%)); }
+.comparador .linea { position: absolute; top: 0; bottom: 0; left: var(--corte, 50%); width: 3px; background: #fff; box-shadow: 0 0 0 1px rgba(15,23,42,.15); transform: translateX(-50%); }
+.comparador .tirador {
+  position: absolute; top: 50%; left: var(--corte, 50%); width: 44px; height: 44px; border-radius: 50%;
+  background: #fff; border: 2px solid var(--marino); transform: translate(-50%, -50%);
+  display: grid; place-items: center; color: var(--marino);
+}
+.comparador .tirador svg { width: 22px; height: 22px; }
+.comparador .etq { position: absolute; top: .75rem; font-size: .8rem; font-weight: 600; background: rgba(255,255,255,.92); border-radius: 8px; padding: .2rem .6rem; }
+.comparador .etq.izq { left: .75rem; }
+.comparador .etq.der { right: .75rem; color: var(--marino); }
+
+.progreso { height: 6px; border-radius: 99px; background: var(--suave); overflow: hidden; }
+.progreso i { display: block; height: 100%; width: 0; background: var(--dorado); transition: width .3s linear; }
+
+.aviso-demo { font-size: .78rem; color: var(--gris); }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { transition: none !important; animation: none !important; }
+}
+
+[hidden] { display: none !important; }

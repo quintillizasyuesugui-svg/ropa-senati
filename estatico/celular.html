@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mandar foto · Probador SENATI</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@500;600;700&family=Work+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/estatico/comun.css">
+<style>
+  body { display: flex; flex-direction: column; gap: .8rem; padding: 1rem; max-width: 640px; margin: 0 auto; height: 100dvh; }
+  header h1 { font-size: 1.3rem; color: var(--marino); }
+  header p { font-size: .9rem; color: var(--gris); }
+  .visor { flex: 1; min-height: 0; background: var(--suave); border-radius: var(--radio); overflow: hidden; display: grid; place-items: center; }
+  .visor img { width: 100%; height: 100%; object-fit: contain; }
+  .segmento { width: 100%; grid-auto-columns: 1fr; }
+  .botones { display: grid; grid-template-columns: 1fr 1fr; gap: .6rem; }
+  .botones .principal { grid-column: 1 / -1; }
+  .boton { width: 100%; }
+  .casilla { display: flex; gap: .6rem; align-items: flex-start; font-size: .9rem; }
+  .casilla input { width: 22px; height: 22px; flex: none; accent-color: var(--marino); }
+  .aviso { text-align: center; font-weight: 600; min-height: 1.4em; font-size: .95rem; }
+  .aviso.ok { color: var(--ok); }
+  .aviso.mal { color: #B91C1C; }
+</style>
+</head>
+<body>
+  <header>
+    <h1>Mandar foto a la PC</h1>
+    <p>De frente, cuerpo entero y brazos abajo.</p>
+  </header>
+  <div class="visor" id="visor">
+    <div class="vacio"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="2" width="14" height="20" rx="2"/><line x1="12" y1="18" x2="12.01" y2="18"/></svg><p>Toma la foto con la cámara</p></div>
+  </div>
+  <div class="segmento" role="group" aria-label="Uniforme">
+    <button data-tipo="chico" aria-pressed="false">Chico</button>
+    <button data-tipo="chica" aria-pressed="false">Chica</button>
+  </div>
+  <label class="casilla"><input type="checkbox" id="mayor"> La persona es mayor de 18 años y aceptó la foto (OBLIGATORIO)</label>
+  <div class="botones">
+    <label class="boton">Tomar foto<input type="file" accept="image/*" capture="environment" hidden id="camara"></label>
+    <label class="boton">Galería<input type="file" accept="image/*" hidden id="galeria"></label>
+    <button class="boton principal" id="enviar" disabled>Mandar a la PC</button>
+  </div>
+  <p class="aviso" id="aviso" role="status"></p>
+
+<script src="/estatico/comun.js"></script>
+<script>
+  const visor = document.getElementById('visor');
+  const enviar = document.getElementById('enviar');
+  const aviso = document.getElementById('aviso');
+  const mayor = document.getElementById('mayor');
+  let archivo = null, tipo = null;
+
+  function avisar(texto, clase = '') { aviso.textContent = texto; aviso.className = `aviso ${clase}`; }
+  function revisar() { enviar.disabled = !(archivo && tipo && mayor.checked); }
+  if (!sala) avisar('Escanea otra vez el QR del tablero.', 'mal');
+
+  document.querySelectorAll('[data-tipo]').forEach(b => b.addEventListener('click', () => {
+    tipo = b.dataset.tipo;
+    document.querySelectorAll('[data-tipo]').forEach(x => x.setAttribute('aria-pressed', x === b));
+    revisar();
+  }));
+  mayor.addEventListener('change', revisar);
+
+  ['camara', 'galeria'].forEach(id => document.getElementById(id).addEventListener('change', e => {
+    if (!e.target.files[0]) return;
+    archivo = e.target.files[0];
+    e.target.value = '';
+    visor.innerHTML = `<img src="${URL.createObjectURL(archivo)}" alt="Foto tomada">`;
+    avisar(tipo ? '' : 'Elige Chico o Chica.');
+    revisar();
+  }));
+
+  enviar.addEventListener('click', async () => {
+    enviar.disabled = true;
+    avisar('Mandando…');
+    try {
+      await subirFoto(archivo, tipo, 'Celular');
+      avisar('Llegó a la PC. Puedes tomar la siguiente.', 'ok');
+      archivo = null;
+      mayor.checked = false;
+    } catch (error) {
+      avisar(`No se pudo mandar: ${error.message}`, 'mal');
+    }
+    revisar();
+  });
+</script>
+</body>
+</html>

@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tablero · Probador de uniforme SENATI</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@500;600;700&family=Work+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/estatico/comun.css">
+<link rel="stylesheet" href="/estatico/tablero.css">
+</head>
+<body>
+  <header class="cabecera">
+    <h1>Probador de uniforme SENATI</h1>
+    <div class="cuenta">
+      <span><b class="cifra" id="cuenta">0 de 0</b> fotos listas</span>
+      <div class="progreso"><i id="barra-total"></i></div>
+      <span class="falta" id="falta"></span>
+    </div>
+    <span class="motor apagado" id="motor" role="status">Motor apagado</span>
+    <button class="boton" id="subir"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>Subir fotos</button>
+    <a class="boton principal" id="zip" href="#"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>Descargar todas</a>
+  </header>
+
+  <div class="cuerpo">
+    <main class="rejilla" id="rejilla" aria-live="polite">
+      <div class="vacio" id="vacio">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.09-3.09a2 2 0 0 0-2.82 0L6 21"/></svg>
+        <p>Todavía no hay fotos. Escanea el QR con un celular o sube fotos desde la PC.</p>
+      </div>
+    </main>
+    <aside class="lado">
+      <div class="qr-caja">
+        <div class="qr" id="qr"></div>
+        <p><strong>Escanea con el celular</strong><br>toma la foto y llega aquí sola</p>
+      </div>
+      <p class="nota">Solo personas mayores de 18 años. Las fotos se borran solas a las 6 horas.</p>
+      <button class="boton peligro" id="borrar-todo">Borrar todas las fotos</button>
+    </aside>
+  </div>
+
+  <dialog id="subida">
+    <form method="dialog" class="dialogo">
+      <h2>Subir fotos desde la PC</h2>
+      <fieldset>
+        <legend>Uniforme (OBLIGATORIO)</legend>
+        <div class="segmento" role="group">
+          <button type="button" data-tipo-subida="chico" aria-pressed="false">Chico</button>
+          <button type="button" data-tipo-subida="chica" aria-pressed="true">Chica</button>
+        </div>
+      </fieldset>
+      <label class="casilla"><input type="checkbox" id="mayor-pc"> Confirmo que todas son personas mayores de 18 años (OBLIGATORIO)</label>
+      <p class="error-form" id="error-subida" role="alert"></p>
+      <div class="acciones">
+        <button class="boton" value="cancelar">Cancelar</button>
+        <button class="boton principal" type="button" id="elegir-archivos">Elegir fotos</button>
+      </div>
+    </form>
+  </dialog>
+  <input type="file" id="archivo" accept="image/*" multiple hidden>
+
+  <dialog id="detalle">
+    <div class="modal">
+      <header><h2 id="detalle-titulo">Foto</h2><button class="cerrar" id="cerrar" aria-label="Cerrar">×</button></header>
+      <div class="escena" id="escena"></div>
+      <p class="error-form" id="detalle-error" role="alert"></p>
+      <footer>
+        <button class="boton peligro" id="borrar">Borrar</button>
+        <span class="espacio"></span>
+        <div class="segmento" role="group" aria-label="Repetir con uniforme">
+          <button data-repetir="chico" aria-pressed="false">Chico</button>
+          <button data-repetir="chica" aria-pressed="false">Chica</button>
+        </div>
+        <button class="boton" id="repetir">Repetir</button>
+        <a class="boton principal" id="descargar" download>Descargar</a>
+      </footer>
+    </div>
+  </dialog>
+
+<script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js"></script>
+<script src="/estatico/comun.js"></script>
+<script src="/estatico/tablero.js"></script>
+</body>
+</html>
