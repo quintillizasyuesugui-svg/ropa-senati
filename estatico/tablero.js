@@ -161,6 +161,7 @@ function abrirDetalle(id) {
   const f = ultimo.fotos.find(x => x.id === id);
   tipoRepetir = f.tipo;
   avisoGemini('');
+  if (window.puter && puter.auth.isSignedIn()) botonGemini.textContent = 'Probar con Gemini';
   document.getElementById('detalle-error').textContent = '';
   pintarDetalle();
   detalle.showModal();
@@ -228,11 +229,15 @@ const botonGemini = document.getElementById('gemini');
 
 function avisoGemini(texto, clase = '') { estadoGemini.textContent = texto; estadoGemini.className = `gemini-estado ${clase}`; }
 
+function textoDeError(error) {
+  return typeof error === 'string' ? error : JSON.stringify(error?.error || error?.message || error || '');
+}
+
+const sinSaldo = error => /insufficient|funds|credit|balance|limit|quota|usage/i.test(textoDeError(error));
+
 function textoErrorPuter(error) {
-  const texto = typeof error === 'string' ? error : JSON.stringify(error?.error || error?.message || error || '');
-  if (/insufficient|funds|credit|balance|limit|quota|usage/i.test(texto)) {
-    return 'Se acabó el saldo gratis de esta cuenta de Puter. Toca «Cambiar cuenta» y entra con otra.';
-  }
+  const texto = textoDeError(error);
+  if (sinSaldo(error)) return 'Se acabó el saldo gratis de esta cuenta de Puter. Toca «Cambiar cuenta» y entra con otra.';
   if (/safety|policy|blocked|prohibit/i.test(texto)) return 'Gemini no quiso hacer esta foto. Toma otra de frente y con buena luz.';
   if (/cancel|closed|popup/i.test(texto)) return 'No se inició sesión en Puter.';
   return `Gemini falló: ${texto.slice(0, 160)}`;
@@ -266,9 +271,17 @@ botonGemini.addEventListener('click', async () => {
     datos.append('imagen', resultado, 'gemini.png');
     await api(`/fotos/${id}/resultado-gemini`, { method: 'POST', body: datos });
     avisoGemini('Listo: la foto quedó hecha con Gemini.', 'ok');
+    botonGemini.textContent = 'Probar con Gemini';
   } catch (error) {
     console.log(error);
-    avisoGemini(textoErrorPuter(error), 'mal');
+    if (sinSaldo(error)) {
+      // Se cierra la sesión sola; el navegador solo deja abrir la ventana de Puter con un toque
+      try { await puter.auth.signOut(); } catch (e) { /* ya estaba cerrada */ }
+      botonGemini.textContent = 'Entrar con otra cuenta y reintentar';
+      avisoGemini('Se acabó el saldo de esa cuenta y cerré su sesión. Toca el botón dorado, entra con otra cuenta y la foto se hace sola.', 'mal');
+    } else {
+      avisoGemini(textoErrorPuter(error), 'mal');
+    }
   } finally {
     botonGemini.disabled = false;
   }
