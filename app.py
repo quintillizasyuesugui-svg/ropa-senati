@@ -115,6 +115,11 @@ def recuperar_salas():
             if foto["estado"] == "haciendo":
                 foto.update(estado=estado_de_espera(foto.get("ia")), paso=0, inicio=0)
             fotos[int(clave)] = foto
+        # Salas de antes de que existiera el número visible: se numeran 1, 2, 3… en el orden en que llegaron
+        if any("numero" not in f for f in fotos.values()):
+            for numero, id_foto in enumerate(sorted(fotos), start=1):
+                fotos[id_foto]["numero"] = numero
+            almacen.guardar_estado(sala)
         salas[sala] = {"creada": guardada["creada"], "siguiente": guardada["siguiente"], "fotos": fotos}
 
 
