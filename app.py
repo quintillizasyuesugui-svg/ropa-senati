@@ -145,9 +145,21 @@ def revisar_clave(clave):
         raise HTTPException(401, "Clave del motor incorrecta.")
 
 
+# Una foto de Gemini la hace un solo aparato: el que la toma primero. Si ese aparato se cierra o se cuelga,
+# a los 3 minutos sin noticias otro la puede tomar.
+SEGUNDOS_TOMA_GEMINI = 180
+
+
+def gemini_tomada_por(foto):
+    if foto.get("estado") == "gemini" and foto.get("gemini_por") and ahora() - foto.get("gemini_desde", 0) < SEGUNDOS_TOMA_GEMINI:
+        return foto["gemini_por"]
+    return ""
+
+
 def publica(foto):
     datos = {k: foto.get(k) for k in ("id", "tipo", "origen", "ia", "estado", "paso", "pasos", "error", "creada", "inicio", "fin")}
     datos["numero"] = foto.get("numero", foto["id"])
+    datos["gemini_por"] = gemini_tomada_por(foto)
     return datos
 
 
@@ -280,9 +292,25 @@ def repetir(sala: str, id_foto: int, tipo: str = Form(...), ia: str = Form("")):
             raise HTTPException(409, "Esta foto se está procesando ahora.")
         if ia in ("colab", "gemini"):
             foto["ia"] = ia
-        foto.update(tipo=tipo, estado=estado_de_espera(foto.get("ia")), paso=0, pasos=0, error="", inicio=0, fin=0)
+        foto.update(tipo=tipo, estado=estado_de_espera(foto.get("ia")), paso=0, pasos=0, error="", inicio=0, fin=0,
+                    gemini_por="")
         borrar(sala, f"{id_foto}_resultado")
     almacen.guardar_estado(sala)
+    return {"ok": True}
+
+
+@app.post("/api/salas/{sala}/fotos/{id_foto}/tomar-gemini")
+def tomar_gemini(sala: str, id_foto: int, aparato: str = Form(...)):
+    """Un tablero avisa que va a hacer esta foto con Gemini (o que la sigue haciendo). Los demás la saltan."""
+    foto = foto_o_404(sala, id_foto)
+    aparato = aparato[:40]
+    with candado:
+        if foto["estado"] != "gemini":
+            raise HTTPException(409, "Esta foto ya no espera a Gemini.")
+        dueño = gemini_tomada_por(foto)
+        if dueño and dueño != aparato:
+            raise HTTPException(409, "Otro aparato ya está haciendo esta foto con Gemini.")
+        foto.update(gemini_por=aparato, gemini_desde=ahora())
     return {"ok": True}
 
 
@@ -292,7 +320,7 @@ async def resultado_gemini(sala: str, id_foto: int, imagen: UploadFile = File(No
     foto = foto_o_404(sala, id_foto)
     if error:
         with candado:
-            foto.update(estado="error", error=error[:200], fin=ahora())
+            foto.update(estado="error", error=error[:200], fin=ahora(), gemini_por="")
         almacen.guardar_estado(sala)
         return {"ok": True}
     if imagen is None:
@@ -306,7 +334,7 @@ async def resultado_gemini(sala: str, id_foto: int, imagen: UploadFile = File(No
         if foto["estado"] == "haciendo":
             raise HTTPException(409, "Esta foto se está procesando ahora.")
         guardar(sala, f"{id_foto}_resultado", contenido)
-        foto.update(estado="lista", error="", fin=ahora())
+        foto.update(estado="lista", error="", fin=ahora(), gemini_por="")
     almacen.guardar_estado(sala)
     return {"ok": True}
 

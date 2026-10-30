@@ -32,7 +32,7 @@ const geminiFalta = () => Math.max(3, avanceGemini.segundos - geminiPasado());
 
 const textoEstado = f => ({
   cola: 'En espera',
-  gemini: geminiTrabajando === f.id ? `Gemini ${geminiPorcentaje()}%` : 'Espera Gemini',
+  gemini: geminiTrabajando === f.id ? `Gemini ${geminiPorcentaje()}%` : f.gemini_por ? 'Gemini en otro aparato' : 'Espera Gemini',
   haciendo: f.pasos ? `Poniendo ${Math.round((f.paso / f.pasos) * 100)}%` : 'Empezando…',
   lista: 'Lista',
   error: 'No se pudo',
@@ -83,7 +83,7 @@ function crearTarjeta(f) {
 function pintarTarjeta(t, f, datos) {
   // Con 300 fotos se repinta cada 2 s: solo se toca la tarjeta si algo cambió
   const enMarcha = f.estado === 'haciendo' || (f.estado === 'gemini' && geminiTrabajando === f.id);
-  const firma = enMarcha ? null : `${f.estado}|${f.tipo}|${f.fin}|${f.ia}|${f.origen}|${f.numero}|${geminiTrabajando === f.id}`;
+  const firma = enMarcha ? null : `${f.estado}|${f.tipo}|${f.fin}|${f.ia}|${f.origen}|${f.numero}|${geminiTrabajando === f.id}|${f.gemini_por}`;
   if (firma && firma === t.firma) return;
   t.firma = firma;
   const chip = t.boton.querySelector('.chip');
@@ -283,7 +283,7 @@ function pintarDetalle() {
     const texto = f.estado === 'gemini'
       ? (geminiTrabajando === f.id
         ? `Gemini está poniendo el uniforme · ${geminiPorcentaje()}% · falta ${textoTiempo(geminiFalta())}`
-        : 'Espera su turno con Gemini')
+        : f.gemini_por ? 'Otro aparato con Puter la está haciendo con Gemini' : 'Espera su turno con Gemini')
       : f.estado === 'cola'
       ? `En espera · ${ultimo.fotos.filter(x => x.estado === 'cola' && x.creada < f.creada).length} foto(s) antes`
       : `Poniendo el uniforme · paso ${f.paso} de ${f.pasos || '…'} · falta ${textoTiempo(faltaFoto(f, ultimo))}`;
@@ -553,12 +553,33 @@ async function iniciarSesion() {
 }
 
 // Modo Gemini: el tablero hace las fotos en espera una por una mientras haya sesión abierta
+// Código de este aparato (uno por pestaña) para que dos tableros no hagan la misma foto ni gasten saldo doble
+const APARATO = crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`;
+const tomarGemini = (id) => {
+  const datos = new FormData();
+  datos.append('aparato', APARATO);
+  return api(`/fotos/${id}/tomar-gemini`, { method: 'POST', body: datos });
+};
+
+let buscandoGemini = false;
+
 async function cicloGemini(datos) {
   if (geminiTrabajando !== null || !conSesion()) return;
-  const f = datos.fotos.filter(x => x.estado === 'gemini').sort((a, b) => a.creada - b.creada)[0];
+  const libres = datos.fotos.filter(x => x.estado === 'gemini' && (!x.gemini_por || x.gemini_por === APARATO))
+    .sort((a, b) => a.creada - b.creada);
+  if (!libres.length || buscandoGemini) return;
+  // Mientras pregunta al servidor, que el siguiente repintado no tome otra foto a la vez
+  buscandoGemini = true;
+  let f = null;
+  for (const candidata of libres) {
+    try { await tomarGemini(candidata.id); f = candidata; break; } catch (e) { /* la tomó otro aparato */ }
+  }
+  buscandoGemini = false;
   if (!f) return;
   geminiTrabajando = f.id;
   avanceGemini.inicio = Date.now();
+  // Mientras trabaja, renueva el aviso para que nadie más la tome
+  const renovar = setInterval(() => tomarGemini(f.id).catch(() => {}), 60000);
   try {
     await hacerConGemini(f.id, f.tipo);
     // Promedio de lo que tarda Gemini aquí, para que la barra de la próxima foto sea más precisa
@@ -574,6 +595,7 @@ async function cicloGemini(datos) {
       await api(`/fotos/${f.id}/resultado-gemini`, { method: 'POST', body: datosError }).catch(() => {});
     }
   } finally {
+    clearInterval(renovar);
     geminiTrabajando = null;
   }
 }
