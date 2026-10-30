@@ -35,6 +35,17 @@ candado = threading.RLock()
 # salas[sala] = {"creada": t, "fotos": {id: foto}, "siguiente": n}
 salas: dict = {}
 motor = {"visto": 0.0, "segundos_por_foto": 60.0, "nombre": ""}
+# Varios cuadernos pueden trabajar a la vez: motores[nombre] = última vez que se reportó
+motores = {}
+
+
+def marcar_motor(nombre):
+    motor["visto"] = ahora()
+    motores[nombre or "motor"] = ahora()
+
+
+def motores_activos():
+    return sum(1 for visto in motores.values() if ahora() - visto < 20)
 
 
 def ahora():
@@ -110,6 +121,7 @@ def estado_sala(sala: str):
     return {
         "fotos": [publica(f) for f in fotos],
         "motor_conectado": ahora() - motor["visto"] < 20,
+        "motores": motores_activos(),
         "segundos_por_foto": round(motor["segundos_por_foto"]),
         "en_fila": len(en_fila),
         "ahora": ahora(),
@@ -203,14 +215,13 @@ def descargar_zip(sala: str):
 @app.post("/api/motor/trabajo")
 def pedir_trabajo(x_clave: str = Header(""), nombre: str = Form("motor")):
     revisar_clave(x_clave)
-    motor["visto"] = ahora()
-    motor["nombre"] = nombre
+    marcar_motor(nombre)
     with candado:
         pendientes = [(f["creada"], s, f) for s, d in salas.items() for f in d["fotos"].values() if f["estado"] == "cola"]
         if not pendientes:
             return Response(status_code=204)
         _, sala, foto = min(pendientes, key=lambda x: x[0])
-        foto.update(estado="haciendo", inicio=ahora(), paso=0)
+        foto.update(estado="haciendo", inicio=ahora(), paso=0, motor=nombre)
     imagen = (DATOS / sala / f"{foto['id']}_original").read_bytes()
     return Response(imagen, media_type="application/octet-stream",
                     headers={"X-Sala": sala, "X-Foto": str(foto["id"]), "X-Tipo": foto["tipo"]})
@@ -219,8 +230,8 @@ def pedir_trabajo(x_clave: str = Header(""), nombre: str = Form("motor")):
 @app.post("/api/motor/avance/{sala}/{id_foto}")
 def avance(sala: str, id_foto: int, paso: int = Form(...), pasos: int = Form(...), x_clave: str = Header("")):
     revisar_clave(x_clave)
-    motor["visto"] = ahora()
     foto = foto_o_404(sala, id_foto)
+    marcar_motor(foto.get("motor"))
     foto.update(paso=paso, pasos=pasos)
     return {"ok": True}
 
@@ -229,8 +240,8 @@ def avance(sala: str, id_foto: int, paso: int = Form(...), pasos: int = Form(...
 async def resultado(sala: str, id_foto: int, imagen: UploadFile = File(None), error: str = Form(""),
                     x_clave: str = Header("")):
     revisar_clave(x_clave)
-    motor["visto"] = ahora()
     foto = foto_o_404(sala, id_foto)
+    marcar_motor(foto.get("motor"))
     if error:
         foto.update(estado="error", error=error[:200], fin=ahora())
         return {"ok": True}

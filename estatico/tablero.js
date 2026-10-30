@@ -81,14 +81,16 @@ function pintar(datos) {
   const total = datos.fotos.length;
   document.getElementById('cuenta').textContent = `${listas} de ${total}`;
   document.getElementById('barra-total').style.width = total ? `${(listas / total) * 100}%` : '0';
-  const falta = datos.fotos.reduce((s, f) => s + faltaFoto(f, datos), 0);
+  // Con varios motores la fila se reparte entre ellos
+  const falta = datos.fotos.reduce((s, f) => s + faltaFoto(f, datos), 0) / Math.max(1, datos.motores || 1);
   document.getElementById('falta').textContent = falta > 0
     ? `Faltan unos ${textoTiempo(falta)} (≈ ${textoTiempo(datos.segundos_por_foto)} por foto)`
     : '';
 
   const motor = document.getElementById('motor');
   motor.className = `motor ${datos.motor_conectado ? 'encendido' : 'apagado'}`;
-  motor.textContent = datos.motor_conectado ? 'Motor conectado' : 'Motor apagado';
+  motor.textContent = !datos.motor_conectado ? 'Motor apagado'
+    : datos.motores > 1 ? `${datos.motores} motores conectados` : 'Motor conectado';
   motor.title = datos.motor_conectado ? '' : 'Abre el cuaderno de Colab o Kaggle y corre el paso 8';
 
   if (abierta !== null) pintarDetalle();
