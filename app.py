@@ -8,6 +8,7 @@ Hace de punto de encuentro entre tres partes:
 Las fotos se guardan solo en el disco temporal del servidor y se borran solas a las 6 horas.
 """
 import io
+import re
 import os
 import secrets
 import shutil
@@ -29,7 +30,7 @@ TIPOS = {"chico", "chica"}
 
 DATOS.mkdir(parents=True, exist_ok=True)
 app = FastAPI(title="Probador de uniforme SENATI")
-candado = threading.Lock()
+candado = threading.RLock()
 
 # salas[sala] = {"creada": t, "fotos": {id: foto}, "siguiente": n}
 salas: dict = {}
@@ -41,8 +42,14 @@ def ahora():
 
 
 def sala_o_404(sala):
+    # Render gratis se duerme y al despertar olvida las salas: se rehace vacía con el mismo código
+    # para que el tablero abierto y el QR ya escaneado sigan sirviendo.
     if sala not in salas:
-        raise HTTPException(404, "Esta sala no existe o ya se borró. Abre el tablero de nuevo.")
+        if not re.fullmatch(r"[A-Za-z0-9_-]{12}", sala or ""):
+            raise HTTPException(404, "Esta sala no existe. Abre el tablero de nuevo.")
+        with candado:
+            salas.setdefault(sala, {"creada": ahora(), "fotos": {}, "siguiente": 1})
+        (DATOS / sala).mkdir(parents=True, exist_ok=True)
     return salas[sala]
 
 
