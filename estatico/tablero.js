@@ -548,7 +548,8 @@ async function iniciarSesion() {
   if (!window.puter) throw new Error('Puter no cargó. Revisa el internet y recarga la página.');
   if (!conSesion()) await puter.auth.signIn();
   geminiSinCuenta = false;
-  entrarPuter.textContent = 'Entrar a Puter';
+  entrarPuter.textContent = 'Entrar a Gemini';
+  entrarPuter.hidden = true;
   leerSaldo();
 }
 
@@ -619,11 +620,12 @@ function pintarNube(nube) {
 
 function pintarIa(datos) {
   const esperanGemini = datos.fotos.some(f => f.estado === 'gemini');
-  entrarPuter.hidden = !esperanGemini || conSesion();
+  // Siempre a la vista mientras no haya sesión: así se entra a Gemini antes de que lleguen fotos
+  entrarPuter.hidden = conSesion();
   if (esperanGemini && !conSesion()) {
     document.getElementById('falta').textContent = geminiSinCuenta
       ? 'Se acabó el saldo de esa cuenta: toca «Entrar con otra cuenta de Puter».'
-      : 'Toca «Entrar a Puter» para que Gemini empiece.';
+      : 'Toca «Entrar a Gemini» para que empiece.';
   }
   cicloGemini(datos);
 }

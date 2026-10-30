@@ -11,7 +11,7 @@ body { display: flex; flex-direction: column; height: 100dvh; }
 .falta { font-size: .8rem; color: var(--gris); min-height: 1.2em; }
 a.boton { text-decoration: none; }
 
-.motor { display: inline-flex; align-items: center; gap: .4rem; font-size: .85rem; font-weight: 600; padding: .35rem .75rem; border-radius: 99px; }
+.motor { white-space: nowrap; display: inline-flex; align-items: center; gap: .4rem; font-size: .85rem; font-weight: 600; padding: .35rem .75rem; border-radius: 99px; }
 .motor::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: currentColor; }
 .motor.encendido { background: var(--ok-claro); color: var(--ok); }
 .motor.apagado { background: #FEE2E2; color: #B91C1C; }
