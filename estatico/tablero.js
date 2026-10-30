@@ -212,7 +212,6 @@ function abrirDetalle(id) {
   const f = ultimo.fotos.find(x => x.id === id);
   tipoRepetir = f.tipo;
   avisoGemini('');
-  if (conSesion()) botonGemini.textContent = 'Probar con Gemini';
   document.getElementById('detalle-error').textContent = '';
   pintarDetalle();
   detalle.showModal();
@@ -253,20 +252,31 @@ function pintarDetalle() {
   descargar.hidden = f.estado !== 'lista';
   descargar.href = `${base}/resultado`;
   descargar.download = `uniforme_${f.id}.jpg`;
-  document.getElementById('repetir').disabled = f.estado === 'haciendo';
-  document.getElementById('gemini-fila').hidden = !['lista', 'error'].includes(f.estado);
+  document.querySelectorAll('[data-repetir-ia]').forEach(b => { b.disabled = f.estado === 'haciendo' || geminiTrabajando === f.id; });
   document.querySelectorAll('[data-repetir]').forEach(b => b.setAttribute('aria-pressed', b.dataset.repetir === tipoRepetir));
 }
 
 document.querySelectorAll('[data-repetir]').forEach(b => b.addEventListener('click', () => { tipoRepetir = b.dataset.repetir; pintarDetalle(); }));
 document.getElementById('cerrar').addEventListener('click', () => detalle.close());
 detalle.addEventListener('close', () => { abierta = null; });
-document.getElementById('repetir').addEventListener('click', async () => {
+// R3: un botón por IA. La foto vuelve a la fila de la IA elegida y el resultado nuevo reemplaza al anterior.
+document.querySelectorAll('[data-repetir-ia]').forEach(b => b.addEventListener('click', async () => {
+  const ia = b.dataset.repetirIa;
   const datos = new FormData();
   datos.append('tipo', tipoRepetir);
-  try { await api(`/fotos/${abierta}/repetir`, { method: 'POST', body: datos }); }
-  catch (e) { document.getElementById('detalle-error').textContent = e.message; }
-});
+  datos.append('ia', ia);
+  document.getElementById('detalle-error').textContent = '';
+  try {
+    await api(`/fotos/${abierta}/repetir`, { method: 'POST', body: datos });
+    if (ia === 'gemini' && !conSesion()) {
+      avisoGemini('Inicia sesión en Puter en la ventana que se abrió…');
+      await iniciarSesion();
+    }
+    avisoGemini(ia === 'gemini' ? 'En la fila de Gemini: se hace sola en unos segundos.' : 'En la fila de Colab.', 'ok');
+  } catch (e) {
+    document.getElementById('detalle-error').textContent = e.message || textoErrorPuter(e);
+  }
+}));
 document.getElementById('borrar').addEventListener('click', async () => {
   const id = abierta;
   detalle.close();
@@ -279,7 +289,6 @@ const PEDIDO_GEMINI = 'Edit the first photo: dress the person in exactly the out
   + 'Photorealistic, natural fit and folds. Return only the edited photo.';
 const SEGUNDOS_GEMINI = 30;
 const estadoGemini = document.getElementById('gemini-estado');
-const botonGemini = document.getElementById('gemini');
 const entrarPuter = document.getElementById('entrar-puter');
 let geminiSinCuenta = false;
 
@@ -323,7 +332,6 @@ async function cuentaGastada() {
   try { await puter.auth.signOut(); } catch (e) { /* ya estaba cerrada */ }
   geminiSinCuenta = true;
   entrarPuter.textContent = 'Entrar con otra cuenta de Puter';
-  botonGemini.textContent = 'Entrar con otra cuenta y reintentar';
 }
 
 async function iniciarSesion() {
@@ -331,7 +339,6 @@ async function iniciarSesion() {
   if (!conSesion()) await puter.auth.signIn();
   geminiSinCuenta = false;
   entrarPuter.textContent = 'Entrar a Puter';
-  botonGemini.textContent = 'Probar con Gemini';
 }
 
 // Modo Gemini: el tablero hace las fotos en espera una por una mientras haya sesión abierta
@@ -369,30 +376,6 @@ function pintarIa(datos) {
 
 entrarPuter.addEventListener('click', async () => {
   try { await iniciarSesion(); } catch (error) { document.getElementById('falta').textContent = textoErrorPuter(error); }
-});
-
-// Botón dentro del detalle: rehacer una sola foto con Gemini
-botonGemini.addEventListener('click', async () => {
-  const id = abierta;
-  const f = ultimo.fotos.find(x => x.id === id);
-  if (!f) return;
-  botonGemini.disabled = true;
-  try {
-    if (!conSesion()) { avisoGemini('Inicia sesión en Puter en la ventana que se abrió…'); await iniciarSesion(); }
-    avisoGemini(`Gemini está poniendo el uniforme… (unos ${SEGUNDOS_GEMINI} s)`);
-    await hacerConGemini(id, tipoRepetir || f.tipo);
-    avisoGemini('Listo: la foto quedó hecha con Gemini.', 'ok');
-  } catch (error) {
-    console.log(error);
-    if (sinSaldo(error)) {
-      await cuentaGastada();
-      avisoGemini('Se acabó el saldo de esa cuenta y cerré su sesión. Toca el botón dorado, entra con otra cuenta y la foto se hace sola.', 'mal');
-    } else {
-      avisoGemini(textoErrorPuter(error), 'mal');
-    }
-  } finally {
-    botonGemini.disabled = false;
-  }
 });
 
 document.getElementById('gemini-cuenta').addEventListener('click', async () => {

@@ -171,13 +171,15 @@ def ver_imagen(sala: str, id_foto: int, cual: str):
 
 
 @app.post("/api/salas/{sala}/fotos/{id_foto}/repetir")
-def repetir(sala: str, id_foto: int, tipo: str = Form(...)):
+def repetir(sala: str, id_foto: int, tipo: str = Form(...), ia: str = Form("")):
     foto = foto_o_404(sala, id_foto)
     if tipo not in TIPOS:
         raise HTTPException(400, "Elige chico o chica.")
     with candado:
         if foto["estado"] == "haciendo":
             raise HTTPException(409, "Esta foto se está procesando ahora.")
+        if ia in ("colab", "gemini"):
+            foto["ia"] = ia
         foto.update(tipo=tipo, estado=estado_de_espera(foto.get("ia")), paso=0, pasos=0, error="", inicio=0, fin=0)
         (DATOS / sala / f"{id_foto}_resultado").unlink(missing_ok=True)
     return {"ok": True}

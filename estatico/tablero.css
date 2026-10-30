@@ -121,6 +121,8 @@ legend { font-size: .9rem; font-weight: 600; margin-bottom: .4rem; }
 .gemini-botones { grid-column: 2; grid-row: 1 / span 2; display: flex; gap: .5rem; }
 .boton.dorado { background: var(--dorado); border-color: var(--dorado); color: #fff; }
 .boton.dorado:hover { filter: brightness(1.08); }
+.puter-fila { display: flex; gap: .8rem; align-items: center; justify-content: space-between; padding: 0 1.4rem 1rem; margin-top: -.4rem; font-size: .82rem; }
+.enlace { border: 0; background: none; color: var(--marino); text-decoration: underline; font-weight: 600; padding: .4rem 0; min-height: 40px; }
 @media (max-width: 760px) {
   .gemini { grid-template-columns: 1fr; margin: .6rem 1rem 0; }
   .gemini-botones { grid-column: 1; grid-row: auto; }
@@ -140,4 +142,11 @@ legend { font-size: .9rem; font-weight: 600; margin-bottom: .4rem; }
   .rejilla { grid-template-columns: repeat(2, 1fr); padding: .7rem; gap: .6rem; }
   .modal footer .espacio { display: none; }
   .modal footer > * { flex: 1; }
+}
+
+.tarjeta .datos b { white-space: nowrap; }
+@media (max-width: 760px) {
+  .modal footer .segmento { flex-basis: 100%; order: -1; }
+  .modal footer [data-repetir-ia] { flex: 1 1 40%; }
+  .modal footer #borrar, .modal footer #descargar { flex: 1 1 40%; order: 2; }
 }
